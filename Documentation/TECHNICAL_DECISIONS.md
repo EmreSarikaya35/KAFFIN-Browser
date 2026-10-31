@@ -24,6 +24,14 @@ Confirmed by the project owner in the app: Google account sign-in works, and Ama
 
 Still open: Microsoft sign-in, tab mute, password manager and ad blocker extensions.
 
+## Persistence
+
+GRDB.swift 7.11 in WAL mode, behind `ProfileDatabase`. The file lives in `Application Support/KAFFIN/Profiles/<id>/profile.sqlite`, inside the sandbox container.
+
+File paths passed to SQLite or `FileManager` must use `path(percentEncoded: false)`. Plain `path()` turns the space in `Application Support` into `%20`.
+
+Only the default profile exists so far, so the application database and folder tables from the plan are not created yet.
+
 ## Signing
 
 Debug builds are ad hoc signed without the hardened runtime flag, which Xcode omits for that configuration. Release builds carry it (`flags=0x10002(adhoc,runtime)`) and launch under the sandbox. Developer ID signing is unverified until Phase 8.

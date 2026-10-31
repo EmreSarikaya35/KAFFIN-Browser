@@ -58,6 +58,7 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring {
     public func recordVisit(url: URL, title: String?, at date: Date) async throws {
         guard url.scheme == "http" || url.scheme == "https" else { return }
         let address = url.absoluteString
+        let title = title.flatMap { $0.isEmpty ? nil : $0 }
         try await writer.write { db in
             try db.execute(
                 sql: """
@@ -72,6 +73,16 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring {
             try db.execute(
                 sql: "INSERT INTO historyVisits (historyURLId, visitedAt) SELECT id, ? FROM historyURLs WHERE url = ?",
                 arguments: [date, address]
+            )
+        }
+    }
+
+    /// WebKit often delivers a page's title after the page finishes loading.
+    public func updateHistoryTitle(url: URL, title: String) async throws {
+        try await writer.write { db in
+            try db.execute(
+                sql: "UPDATE historyURLs SET title = ? WHERE url = ?",
+                arguments: [title, url.absoluteString]
             )
         }
     }

@@ -10,6 +10,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        windowManager.openURLs(urls)
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         windowManager.saveSessionNow()
     }

@@ -19,6 +19,28 @@ struct ProfileDatabaseTests {
         #expect(entries[0].lastVisit == Date(timeIntervalSince1970: 2))
     }
 
+    @Test func titleArrivingAfterVisitFillsEntry() async throws {
+        let db = try ProfileDatabase.inMemory()
+        try await db.recordVisit(url: example, title: nil, at: .now)
+        try await db.updateHistoryTitle(url: example, title: "Late Title")
+
+        #expect(try await db.recentHistory(limit: 1).first?.title == "Late Title")
+    }
+
+    @Test func titleForUnvisitedPageCreatesNothing() async throws {
+        let db = try ProfileDatabase.inMemory()
+        try await db.updateHistoryTitle(url: example, title: "Never Visited")
+        #expect(try await db.recentHistory(limit: 1).isEmpty)
+    }
+
+    @Test func revisitWithoutTitleKeepsKnownTitle() async throws {
+        let db = try ProfileDatabase.inMemory()
+        try await db.recordVisit(url: example, title: "Known", at: .now)
+        try await db.recordVisit(url: example, title: "", at: .now)
+
+        #expect(try await db.recentHistory(limit: 1).first?.title == "Known")
+    }
+
     @Test func historyIgnoresNonWebPages() async throws {
         let db = try ProfileDatabase.inMemory()
         try await db.recordVisit(url: URL(string: "about:blank")!, title: nil, at: .now)
@@ -90,12 +112,16 @@ struct ProfileDatabaseTests {
         #expect(try await db.loadSession() == [windows[1]])
     }
 
+    // The real path contains "Application Support", so the space matters.
     @Test func dataSurvivesReopeningFile() async throws {
-        let path = FileManager.default.temporaryDirectory.appending(path: "kaffin-\(UUID()).sqlite").path()
-        defer { try? FileManager.default.removeItem(atPath: path) }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "kaffin test \(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let path = folder.appending(path: "profile.sqlite").path(percentEncoded: false)
 
         try await ProfileDatabase(path: path).addBookmark(url: example, title: "A")
         #expect(try await ProfileDatabase(path: path).bookmarks().map(\.title) == ["A"])
+        #expect(FileManager.default.fileExists(atPath: folder.appending(path: "profile.sqlite").path(percentEncoded: false)))
     }
 }
 

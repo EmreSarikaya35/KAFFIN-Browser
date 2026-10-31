@@ -12,10 +12,15 @@ enum MainMenuBuilder {
         let showHistory = item("history.show", #selector(WindowManager.showHistory(_:)), "y")
         showHistory.target = windowManager
 
+        let setDefault = item("menu.setDefault", #selector(WindowManager.setAsDefaultBrowser(_:)), "")
+        setDefault.target = windowManager
+
         let mainMenu = NSMenu()
         for menu in [
             menu("KAFFIN", [
                 item("menu.about", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
+                .separator(),
+                setDefault,
                 .separator(),
                 item("menu.hide", #selector(NSApplication.hide(_:)), "h"),
                 item("menu.quit", #selector(NSApplication.terminate(_:)), "q"),
@@ -28,6 +33,8 @@ enum MainMenuBuilder {
                 item("menu.focusAddress", #selector(BrowserWindowController.focusAddress(_:)), "l"),
                 .separator(),
                 item("tab.close", #selector(BrowserWindowController.closeTab(_:)), "w"),
+                .separator(),
+                item("menu.print", #selector(BrowserWindowController.printPage(_:)), "p"),
             ]),
             menu(L10n.string("menu.edit"), [
                 item("menu.undo", Selector(("undo:")), "z"),
@@ -37,6 +44,8 @@ enum MainMenuBuilder {
                 item("menu.copy", #selector(NSText.copy(_:)), "c"),
                 item("menu.paste", #selector(NSText.paste(_:)), "v"),
                 item("menu.selectAll", #selector(NSText.selectAll(_:)), "a"),
+                .separator(),
+                item("find.show", #selector(BrowserWindowController.showFind(_:)), "f"),
             ]),
             menu(L10n.string("menu.view"), [
                 item("nav.reload", #selector(BrowserWindowController.reloadPage(_:)), "r"),

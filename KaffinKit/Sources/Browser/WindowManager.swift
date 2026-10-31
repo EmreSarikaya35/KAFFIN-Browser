@@ -17,6 +17,7 @@ public final class WindowManager: NSObject {
     private var controllers: [BrowserWindowController] = []
     private var historyWindow: NSWindow?
     private var saveTask: Task<Void, Never>?
+    private let downloads = DownloadManager()
 
     public func start() {
         AppearanceController.shared.applySavedMode()
@@ -34,10 +35,17 @@ public final class WindowManager: NSObject {
     }
 
     private func openWindow(session: SessionWindow?) {
-        let controller = BrowserWindowController(factory: factory, bookmarks: bookmarks, isPrivate: false, session: session)
+        let controller = BrowserWindowController(
+            factory: factory,
+            bookmarks: bookmarks,
+            downloads: downloads,
+            isPrivate: false,
+            session: session
+        )
         controller.trackChanges(
             onChange: { [weak self] in self?.scheduleSessionSave() },
-            onPageVisit: { [weak self] url, title in self?.recordVisit(url: url, title: title) }
+            onPageVisit: { [weak self] url, title in self?.recordVisit(url: url, title: title) },
+            onPageTitle: { [weak self] url, title in self?.recordTitle(url: url, title: title) }
         )
         show(controller)
     }
@@ -58,6 +66,7 @@ public final class WindowManager: NSObject {
         show(BrowserWindowController(
             factory: .privateSession(),
             bookmarks: bookmarks,
+            downloads: DownloadManager(),
             isPrivate: true,
             session: nil
         ))
@@ -78,6 +87,10 @@ public final class WindowManager: NSObject {
         window.makeKeyAndOrderFront(nil)
     }
 
+    public func openURLs(_ urls: [URL]) {
+        urls.forEach(openInFrontWindow)
+    }
+
     private func openInFrontWindow(_ url: URL) {
         guard let controller = controllers.last(where: { !$0.isPrivate }) else {
             openWindow(session: SessionWindow(tabs: [
@@ -96,6 +109,17 @@ public final class WindowManager: NSObject {
                 try await database.recordVisit(url: url, title: title, at: .now)
             } catch {
                 Self.logger.error("Could not record visit: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func recordTitle(url: URL, title: String) {
+        guard let database else { return }
+        Task {
+            do {
+                try await database.updateHistoryTitle(url: url, title: title)
+            } catch {
+                Self.logger.error("Could not update history title: \(error.localizedDescription)")
             }
         }
     }
@@ -152,13 +176,23 @@ public final class WindowManager: NSObject {
         presentHistory()
     }
 
+    @objc func setAsDefaultBrowser(_ sender: Any?) {
+        let app = Bundle.main.bundleURL
+        Task {
+            // macOS asks the user to confirm this change itself.
+            for scheme in ["http", "https"] {
+                try? await NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: scheme)
+            }
+        }
+    }
+
     private static func openDatabase() -> ProfileDatabase? {
         do {
             let directory = try FileManager.default
                 .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appending(path: "KAFFIN/Profiles/\(WebViewFactory.defaultProfileID.uuidString)")
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            return try ProfileDatabase(path: directory.appending(path: "profile.sqlite").path())
+            return try ProfileDatabase(path: directory.appending(path: "profile.sqlite").path(percentEncoded: false))
         } catch {
             // shortcut: the browser still runs without saved data, but nothing tells the user yet. Show an alert in Phase 7.
             logger.error("Could not open profile database: \(error.localizedDescription)")

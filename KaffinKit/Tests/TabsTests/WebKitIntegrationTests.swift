@@ -1,0 +1,85 @@
+import BrowserCore
+import Foundation
+import Testing
+@testable import Tabs
+
+/// Runs real WebKit against a local server, with no window. Proves the delegates are really called.
+@MainActor
+@Suite(.serialized)
+struct WebKitIntegrationTests {
+    private let folder: URL
+    private let downloads: DownloadManager
+    private let manager: TabManager
+
+    init() throws {
+        folder = FileManager.default.temporaryDirectory.appending(path: "kaffin-\(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        downloads = DownloadManager(directory: folder)
+        manager = TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads)
+    }
+
+    private func wait(_ what: Comment, until condition: () -> Bool) async throws {
+        for _ in 0..<500 where !condition() {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(condition(), what)
+    }
+
+    @Test func finishedPageIsReportedAsVisit() async throws {
+        let server = try await LocalTestServer()
+        let page = server.baseURL.appending(path: "page")
+        var visits: [URL] = []
+        var titles: [String] = []
+        manager.onPageVisit = { url, _ in visits.append(url) }
+        manager.onPageTitle = { _, title in titles.append(title) }
+
+        manager.newTab(url: page)
+        try await wait("visit and title") { !visits.isEmpty && titles.contains("Test Page") }
+        #expect(visits == [page])
+    }
+
+    @Test func attachmentBecomesDownloadInChosenFolder() async throws {
+        let server = try await LocalTestServer()
+        manager.newTab(url: server.baseURL.appending(path: "file"))
+
+        try await wait("download finished") { downloads.items.first?.state == .finished }
+        let file = folder.appending(path: "report.bin")
+        #expect(FileManager.default.contents(atPath: file.path(percentEncoded: false))?.count == 2048)
+    }
+
+    @Test func closingTabKeepsDownloadRunning() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "slow"))
+        try await wait("download started") { !downloads.items.isEmpty }
+
+        manager.close(tab.id)
+        try await wait("download finished after close") { downloads.items.first?.state == .finished }
+        #expect(FileManager.default.contents(atPath: folder.appending(path: "report.bin").path(percentEncoded: false))?.count == 2048)
+    }
+
+    @Test func refusedConnectionShowsErrorPageAndRecordsNoVisit() async throws {
+        var visits = 0
+        var titles: [String] = []
+        manager.onPageVisit = { _, _ in visits += 1 }
+        manager.onPageTitle = { _, title in titles.append(title) }
+        let failed = URL(string: "http://127.0.0.1:9/nothing")!
+
+        let tab = manager.newTab(url: failed)
+        try await wait("error page") { tab.isShowingError && !tab.isLoading }
+        #expect(tab.url == failed)
+        #expect(tab.title == "127.0.0.1")
+        #expect(visits == 0)
+        #expect(titles.isEmpty)
+    }
+
+    @Test func successfulLoadClearsErrorState() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: URL(string: "http://127.0.0.1:9/nothing"))
+        _ = tab
+        try await wait("error page") { manager.tabs[0].isShowingError && !manager.tabs[0].isLoading }
+
+        manager.tabs[0].load(server.baseURL.appending(path: "page"))
+        try await wait("real page") { manager.tabs[0].title == "Test Page" }
+        #expect(!manager.tabs[0].isShowingError)
+    }
+}

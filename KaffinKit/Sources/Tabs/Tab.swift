@@ -14,9 +14,12 @@ public final class Tab: Identifiable {
     public private(set) var isLoading = false
     public private(set) var canGoBack = false
     public private(set) var canGoForward = false
+    /// The URL stays in the address bar, so the security indicator must not vouch for this page.
+    public internal(set) var isShowingError = false
 
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private var pending: SessionTab?
+    @ObservationIgnored var onTitleChange: ((URL, String) -> Void)?
 
     /// True for a restored tab whose page has not started loading yet.
     public var isAwaitingLoad: Bool { pending != nil }
@@ -30,7 +33,9 @@ public final class Tab: Identifiable {
         observations = [
             observe(\.title) { tab, webView in
                 // A restored tab keeps its saved title until its page starts loading.
-                if !tab.isAwaitingLoad { tab.title = webView.title.flatMap { $0.isEmpty ? nil : $0 } }
+                guard !tab.isAwaitingLoad else { return }
+                tab.title = webView.title.flatMap { $0.isEmpty ? nil : $0 }
+                if !tab.isShowingError, let url = webView.url, let title = tab.title { tab.onTitleChange?(url, title) }
             },
             observe(\.url) { tab, webView in
                 if !tab.isAwaitingLoad { tab.url = webView.url }

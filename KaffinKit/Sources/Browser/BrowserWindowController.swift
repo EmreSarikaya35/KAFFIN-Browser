@@ -3,6 +3,7 @@ import BrowserCore
 import BrowserUI
 import SwiftUI
 import Tabs
+import WebKit
 
 @MainActor
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
@@ -11,6 +12,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     let isPrivate: Bool
     private let webContainer = NSView()
     private var newTabHost: NSHostingView<NewTabView>!
+    private var findHost: NSHostingView<FindBarView>!
+    private let downloads: DownloadManager
     private var chromeHost: NSHostingView<BrowserChromeView>!
     private var focusRequest = 0
     var onClose: ((BrowserWindowController) -> Void)?
@@ -20,9 +23,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private var chromeHeight: NSLayoutConstraint!
 
     /// Private windows get their own factory, and the caller wires no session or history saving.
-    init(factory: WebViewFactory, bookmarks: BookmarksModel, isPrivate: Bool, session: SessionWindow?) {
-        tabManager = TabManager(factory: factory)
+    init(
+        factory: WebViewFactory,
+        bookmarks: BookmarksModel,
+        downloads: DownloadManager,
+        isPrivate: Bool,
+        session: SessionWindow?
+    ) {
+        tabManager = TabManager(factory: factory, downloads: downloads)
         self.bookmarks = bookmarks
+        self.downloads = downloads
         self.isPrivate = isPrivate
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
@@ -56,9 +66,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     var snapshot: SessionWindow { tabManager.snapshot() }
 
-    func trackChanges(onChange: @escaping () -> Void, onPageVisit: @escaping (URL, String?) -> Void) {
+    func trackChanges(
+        onChange: @escaping () -> Void,
+        onPageVisit: @escaping (URL, String?) -> Void,
+        onPageTitle: @escaping (URL, String) -> Void
+    ) {
         tabManager.onChange = onChange
         tabManager.onPageVisit = onPageVisit
+        tabManager.onPageTitle = onPageTitle
     }
 
     func open(_ url: URL) {
@@ -79,8 +94,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         newTabHost = NSHostingView(rootView: NewTabView { [weak self] in self?.submitAddress($0) })
         newTabHost.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(webContainer)
+        findHost = NSHostingView(rootView: makeFindBar())
+        findHost.translatesAutoresizingMaskIntoConstraints = false
+        findHost.isHidden = true
         content.addSubview(newTabHost)
         content.addSubview(chromeHost)
+        content.addSubview(findHost)
         NSLayoutConstraint.activate([
             chromeHost.topAnchor.constraint(equalTo: content.topAnchor),
             chromeHost.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -94,13 +113,36 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             newTabHost.leadingAnchor.constraint(equalTo: webContainer.leadingAnchor),
             newTabHost.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor),
             newTabHost.bottomAnchor.constraint(equalTo: webContainer.bottomAnchor),
+            findHost.topAnchor.constraint(equalTo: webContainer.topAnchor, constant: 8),
+            findHost.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor, constant: -16),
         ])
+    }
+
+    private func makeFindBar() -> FindBarView {
+        FindBarView(
+            focusRequest: focusRequest,
+            onSearch: { [weak self] text, backwards in await self?.find(text, backwards: backwards) ?? false },
+            onClose: { [weak self] in self?.closeFind() }
+        )
+    }
+
+    private func find(_ text: String, backwards: Bool) async -> Bool {
+        guard let webView = tabManager.selectedTab?.webView, !text.isEmpty else { return true }
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        return (try? await webView.find(text, configuration: configuration).matchFound) ?? false
+    }
+
+    private func closeFind() {
+        findHost.isHidden = true
+        window?.makeFirstResponder(tabManager.selectedTab?.webView)
     }
 
     private func makeChromeView() -> BrowserChromeView {
         BrowserChromeView(
             tabManager: tabManager,
             bookmarks: bookmarks,
+            downloads: downloads,
             isPrivate: isPrivate,
             focusRequest: focusRequest
         ) { [weak self] in
@@ -149,6 +191,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private func focusAddressBar() {
         focusRequest += 1
         chromeHost.rootView = makeChromeView()
+    }
+
+    @objc func showFind(_ sender: Any?) {
+        focusRequest += 1
+        findHost.rootView = makeFindBar()
+        findHost.isHidden = false
+    }
+
+    @objc func printPage(_ sender: Any?) {
+        guard let window, let webView = tabManager.selectedTab?.webView else { return }
+        let operation = webView.printOperation(with: .shared)
+        // WebKit's print view starts empty sized, which prints blank pages.
+        operation.view?.frame = webView.bounds
+        operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
 
     func windowWillClose(_ notification: Notification) {

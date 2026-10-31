@@ -15,13 +15,17 @@ public final class TabManager {
     /// Fires for anything a saved session must reflect.
     @ObservationIgnored public var onChange: (() -> Void)?
     @ObservationIgnored public var onPageVisit: ((URL, String?) -> Void)?
+    @ObservationIgnored public var onPageTitle: ((URL, String) -> Void)?
 
     @ObservationIgnored private let factory: WebViewFactory
     @ObservationIgnored private var closedTabURLs: [URL] = []
     @ObservationIgnored private lazy var navigationManager = NavigationManager(tabManager: self)
 
-    public init(factory: WebViewFactory) {
+    @ObservationIgnored let downloads: DownloadManager
+
+    public init(factory: WebViewFactory, downloads: DownloadManager = DownloadManager()) {
         self.factory = factory
+        self.downloads = downloads
     }
 
     public var selectedTab: Tab? {
@@ -61,6 +65,7 @@ public final class TabManager {
         webView.navigationDelegate = navigationManager
         webView.uiDelegate = navigationManager
         let tab = Tab(webView: webView, state: .background, restoring: session)
+        tab.onTitleChange = { [weak self] url, title in self?.onPageTitle?(url, title) }
         if let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
             tabs.insert(tab, at: selectedIndex + 1)
         } else {
@@ -150,7 +155,7 @@ public final class TabManager {
     }
 
     func handleLoadFinished(of tab: Tab) {
-        if let url = tab.webView.url { onPageVisit?(url, tab.webView.title) }
+        if !tab.isShowingError, let url = tab.webView.url { onPageVisit?(url, tab.webView.title) }
         onChange?()
         guard tab.state == .restoring else { return }
         tab.transition(to: tab.id == selectedTabID ? .active : .background)

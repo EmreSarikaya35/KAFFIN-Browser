@@ -10,19 +10,24 @@ public struct BrowserChromeView: View {
 
     let tabManager: TabManager
     let bookmarks: BookmarksModel
+    let downloads: DownloadManager
     let isPrivate: Bool
     let focusRequest: Int
     let onSubmit: (String) -> Void
 
+    @State private var isShowingDownloads = false
+
     public init(
         tabManager: TabManager,
         bookmarks: BookmarksModel,
+        downloads: DownloadManager,
         isPrivate: Bool,
         focusRequest: Int,
         onSubmit: @escaping (String) -> Void
     ) {
         self.tabManager = tabManager
         self.bookmarks = bookmarks
+        self.downloads = downloads
         self.isPrivate = isPrivate
         self.focusRequest = focusRequest
         self.onSubmit = onSubmit
@@ -54,6 +59,12 @@ public struct BrowserChromeView: View {
                 toolbarButton("arrow.clockwise", key: "nav.reload", enabled: tab != nil) { tab?.webView.reload() }
             }
             addressBar(for: tab)
+            toolbarButton("arrow.down.circle", key: "downloads.title", enabled: true) {
+                isShowingDownloads.toggle()
+            }
+            .popover(isPresented: $isShowingDownloads, arrowEdge: .bottom) {
+                DownloadsView(downloads: downloads)
+            }
             mainMenu
         }
         .padding(.horizontal, 10)
@@ -63,7 +74,7 @@ public struct BrowserChromeView: View {
 
     private func addressBar(for tab: Tabs.Tab?) -> some View {
         HStack(spacing: 8) {
-            SecurityIndicator(security: AddressDisplay.security(of: tab?.url))
+            SecurityIndicator(security: tab?.isShowingError == true ? .notSecure : AddressDisplay.security(of: tab?.url))
             AddressField(
                 text: AddressDisplay.text(for: tab?.url),
                 placeholder: L10n.string("address.placeholder"),
@@ -101,6 +112,9 @@ public struct BrowserChromeView: View {
             menuButton("zoom.in", "zoomIn:")
             menuButton("zoom.out", "zoomOut:")
             menuButton("zoom.reset", "resetZoom:")
+            Divider()
+            menuButton("find.show", "showFind:")
+            menuButton("menu.print", "printPage:")
         } label: {
             Image(systemName: "ellipsis").rotationEffect(.degrees(90))
         }

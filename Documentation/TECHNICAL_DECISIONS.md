@@ -22,6 +22,10 @@ Measured with a throwaway unbundled, unsandboxed program. Results must be repeat
 
 Still open, and each needs manual use of the app: Google and Microsoft sign-in, DRM streaming, tab mute, password manager and ad blocker extensions.
 
+## Signing
+
+Debug builds are ad hoc signed without the hardened runtime flag, which Xcode omits for that configuration. Release builds carry it (`flags=0x10002(adhoc,runtime)`) and launch under the sandbox. Developer ID signing is unverified until Phase 8.
+
 ## Testing
 
 Swift Testing needs the full Xcode toolchain because Command Line Tools lack its macro plugin. Run tests with `swift test` in `KaffinKit/`.

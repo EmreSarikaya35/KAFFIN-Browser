@@ -3,7 +3,7 @@
 | Phase                         | Status                                                     |
 | ----------------------------- | ---------------------------------------------------------- |
 | 0. Technical verification     | Automated checks done; manual checks open                  |
-| 1. Project foundation         | Code done; Xcode project build and test run pending        |
+| 1. Project foundation         | Done, verified in the sandboxed app                        |
 | 2. Browser interface          | Not started                                                |
 | 3. Browser essentials         | Not started                                                |
 | 4. Performance engine         | Not started                                                |

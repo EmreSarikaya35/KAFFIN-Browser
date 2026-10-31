@@ -199,13 +199,46 @@ struct SuggestionsModelTests {
         #expect(model.items.contains { $0.kind == .history && $0.title == "Kahve Rehberi" })
     }
 
+    /// Holds the lookup for "s" until released, so the old result really arrives last.
+    private actor GatedHistory: HistoryStoring {
+        private var waiting: CheckedContinuation<Void, Never>?
+        private(set) var isWaiting = false
+
+        func release() {
+            waiting?.resume()
+            waiting = nil
+        }
+
+        func searchHistory(_ query: String, limit: Int) async -> [HistoryEntry] {
+            if query == "s" {
+                await withCheckedContinuation { waiting = $0; isWaiting = true }
+            }
+            return []
+        }
+
+        func topSites(matching prefix: String, limit: Int) -> [SiteMatch] {
+            let host = prefix == "s" ? "stale.example" : "swift.org"
+            return [SiteMatch(url: URL(string: "https://\(host)/")!, host: host, visits: 1)]
+        }
+
+        func recentHistory(limit: Int) -> [HistoryEntry] { [] }
+        func deleteHistory(url: URL) {}
+        func clearHistory() {}
+    }
+
     @Test func staleResultCannotReplaceNewerText() async throws {
-        let (model, _) = try await makeModel()
-        await model.update(text: "swift", engine: .google)
+        let history = GatedHistory()
+        let model = SuggestionsModel(history: history, bookmarks: { [] })
+
         let older = Task { await model.update(text: "s", engine: .google) }
-        await model.update(text: "swift", engine: .google)
+        while await !history.isWaiting { await Task.yield() }
+
+        await model.update(text: "sw", engine: .google)
+        await history.release()
         await older.value
-        #expect(model.inlineCompletion == InlineCompletion(typed: "swift", text: "swift.org"))
+
+        #expect(model.inlineCompletion == InlineCompletion(typed: "sw", text: "swift.org"))
+        #expect(model.items.first?.url.host() == "swift.org")
     }
 
     @Test func typingFirstLetterOffersMostVisitedSite() async throws {

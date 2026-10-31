@@ -7,7 +7,8 @@ import WebKit
 @Observable
 public final class Tab: Identifiable {
     public let id = UUID()
-    public let webView: WKWebView
+    /// Replaced while the tab sleeps, so keep no long-lived reference to it.
+    public private(set) var webView: WKWebView
     public private(set) var state: TabLifecycleState
     public private(set) var title: String?
     public private(set) var url: URL?
@@ -22,6 +23,8 @@ public final class Tab: Identifiable {
     public internal(set) var isPinned = false
     public internal(set) var isMuted = false
     @ObservationIgnored var faviconHost: String?
+    /// When the user last left this tab, for idle sleeping.
+    @ObservationIgnored var lastActiveAt = Date.now
 
     var loginOrigin: String? { LoginOrigin.make(from: webView.url) }
 
@@ -39,6 +42,10 @@ public final class Tab: Identifiable {
         isPinned = session?.isPinned ?? false
         title = session?.title
         url = session?.url
+        observeWebView()
+    }
+
+    private func observeWebView() {
         observations = [
             observe(\.title) { tab, webView in
                 // A restored tab keeps its saved title until its page starts loading.
@@ -83,11 +90,23 @@ public final class Tab: Identifiable {
     func startPendingLoad() {
         guard let pending else { return }
         self.pending = nil
-        if let state = pending.interactionState {
-            webView.interactionState = state
-        } else {
-            webView.load(URLRequest(url: pending.url))
-        }
+        if let state = pending.interactionState { webView.interactionState = state }
+        // An empty saved state leaves nothing to navigate to, and the tab would stay blank.
+        if webView.backForwardList.currentItem == nil { webView.load(URLRequest(url: pending.url)) }
+    }
+
+    /// Swaps in a WebView with no page, so WebKit can free the old page's memory.
+    /// The saved state stays in memory only, which keeps private tabs off the disk.
+    func fallAsleep(into replacement: WKWebView) {
+        pending = sessionTab(isSelected: false)
+        let old = webView
+        old.stopLoading()
+        old.navigationDelegate = nil
+        old.uiDelegate = nil
+        old.removeFromSuperview()
+        webView = replacement
+        observeWebView()
+        transition(to: .sleeping)
     }
 
     func sessionTab(isSelected: Bool) -> SessionTab? {

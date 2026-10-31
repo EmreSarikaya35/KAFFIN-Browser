@@ -175,6 +175,123 @@ struct WebKitIntegrationTests {
         #expect(downloads.items.first?.totalBytes == 2048)
     }
 
+    private func openBackgroundPage(_ server: LocalTestServer, path: String = "page") async throws -> Tab {
+        let tab = manager.newTab(url: server.baseURL.appending(path: path))
+        try await wait("page") { tab.title != nil && !tab.isLoading }
+        manager.newTab()
+        return tab
+    }
+
+    @Test func sleepingTabReleasesItsPageAndKeepsItsIdentity() async throws {
+        let server = try await LocalTestServer()
+        let tab = try await openBackgroundPage(server)
+        manager.togglePin(tab.id)
+        let old = tab.webView
+        let url = tab.url
+
+        #expect(manager.sleep(tab.id))
+
+        #expect(tab.state == .sleeping)
+        #expect(tab.webView !== old)
+        #expect(tab.webView.url == nil, "The new WebView holds no page, so WebKit can drop the old one")
+        #expect(tab.url == url)
+        #expect(tab.title == "Test Page")
+        #expect(tab.isPinned)
+    }
+
+    @Test func selectingSleepingTabRestoresPageAndBackHistory() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("first page") { tab.title == "Test Page" && !tab.isLoading }
+        tab.load(server.baseURL.appending(path: "iconpage"))
+        try await wait("second page") { tab.title == "Icon" && !tab.isLoading && tab.canGoBack }
+        manager.newTab()
+        #expect(manager.sleep(tab.id))
+
+        manager.select(tab.id)
+        #expect(tab.state == .restoring)
+        try await wait("restored") { tab.state == .active && !tab.isLoading }
+        #expect(tab.title == "Icon")
+        #expect(tab.canGoBack)
+    }
+
+    @Test func activeTabCannotSleep() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("page") { tab.title != nil }
+        #expect(!manager.sleep(tab.id))
+        #expect(tab.state == .active)
+    }
+
+    @Test func blankTabCannotSleep() {
+        let blank = manager.newTab(select: false)
+        manager.newTab()
+        #expect(!manager.sleep(blank.id))
+    }
+
+    @Test func sleepingTabSurvivesInSession() async throws {
+        let server = try await LocalTestServer()
+        let tab = try await openBackgroundPage(server)
+        let url = tab.url
+        #expect(manager.sleep(tab.id))
+
+        #expect(manager.snapshot().tabs.first?.url == url)
+        #expect(manager.snapshot().tabs.first?.interactionState != nil)
+    }
+
+    @Test func downloadSurvivesItsTabSleeping() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("page") { tab.title != nil && !tab.isLoading }
+        tab.load(server.baseURL.appending(path: "slow"))
+        try await wait("download started") { !downloads.items.isEmpty }
+        manager.newTab()
+
+        #expect(manager.sleep(tab.id))
+        try await wait("download finished") { downloads.items.first?.state == .finished }
+    }
+
+    private func automaticSettings(_ profile: OptimizationProfile) -> PerformanceSettings {
+        let settings = PerformanceSettings(defaults: UserDefaults(suiteName: "kaffin-test-\(UUID())")!)
+        settings.profile = profile
+        return settings
+    }
+
+    private var afterIdle: Date { Date.now.addingTimeInterval(3600) }
+
+    @Test func standardProfileNeverSleepsTabsAutomatically() async throws {
+        let server = try await LocalTestServer()
+        let tab = try await openBackgroundPage(server)
+
+        await manager.sleepEligibleTabs(automaticSettings(.standard), trigger: .idle, now: afterIdle)
+        await manager.sleepEligibleTabs(automaticSettings(.standard), trigger: .memoryPressure, now: afterIdle)
+        #expect(tab.state == .background)
+    }
+
+    @Test func smartEfficiencyIgnoresIdleButAnswersMemoryPressure() async throws {
+        let server = try await LocalTestServer()
+        let tab = try await openBackgroundPage(server)
+        let settings = automaticSettings(.smartEfficiency)
+
+        await manager.sleepEligibleTabs(settings, trigger: .idle, now: afterIdle)
+        #expect(tab.state == .background)
+
+        await manager.sleepEligibleTabs(settings, trigger: .memoryPressure, now: .now)
+        #expect(tab.state == .sleeping)
+    }
+
+    @Test func aggressiveSavingSleepsIdleTabsOnly() async throws {
+        let server = try await LocalTestServer()
+        let tab = try await openBackgroundPage(server)
+        let settings = automaticSettings(.aggressiveSaving)
+
+        await manager.sleepEligibleTabs(settings, trigger: .idle, now: .now)
+        #expect(tab.state == .background)
+
+        await manager.sleepEligibleTabs(settings, trigger: .idle, now: afterIdle)
+        #expect(tab.state == .sleeping)
+    }
+
     @Test func refusedConnectionShowsErrorPageAndRecordsNoVisit() async throws {
         var visits = 0
         var titles: [String] = []

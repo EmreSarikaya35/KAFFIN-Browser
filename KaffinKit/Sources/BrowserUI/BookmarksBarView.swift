@@ -192,11 +192,15 @@ public enum Prompts {
 
     /// For deletions that remove things which cannot be brought back.
     public static func confirmDelete(_ title: String, detail: String) -> Bool {
+        confirm(title, detail: detail, action: L10n.string("history.delete"))
+    }
+
+    public static func confirm(_ title: String, detail: String, action: String) -> Bool {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = detail
         alert.alertStyle = .warning
-        alert.addButton(withTitle: L10n.string("history.delete"))
+        alert.addButton(withTitle: action)
         alert.addButton(withTitle: L10n.string("history.cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }

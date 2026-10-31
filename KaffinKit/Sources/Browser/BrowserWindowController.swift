@@ -113,6 +113,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         tabManager.onPageTitle = onPageTitle
     }
 
+    func sleepEligibleTabs(_ settings: PerformanceSettings, trigger: SleepTrigger) async {
+        await tabManager.sleepEligibleTabs(settings, trigger: trigger)
+    }
+
     func open(_ url: URL) {
         tabManager.newTab(url: url)
     }

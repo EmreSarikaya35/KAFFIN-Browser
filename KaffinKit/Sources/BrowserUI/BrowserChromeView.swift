@@ -364,7 +364,9 @@ private struct TabItemView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if tab.isLoading {
+            if tab.state == .sleeping {
+                Image(systemName: "moon.zzz").font(.system(size: 12)).foregroundStyle(.secondary)
+            } else if tab.isLoading {
                 ProgressView().controlSize(.mini)
             } else if let image = tab.favicon.flatMap(NSImage.init(data:)) {
                 Image(nsImage: image).resizable().frame(width: 16, height: 16)
@@ -375,6 +377,7 @@ private struct TabItemView: View {
                 Text(title)
                     .lineLimit(1)
                     .font(.system(size: 12))
+                    .foregroundStyle(tab.state == .sleeping ? .secondary : .primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if tab.isMuted {
@@ -429,6 +432,8 @@ private struct TabItemView: View {
             Button(L10n.string("tab.reload")) { tab.webView.reload() }
             Button(L10n.string("tab.duplicate")) { tabManager.duplicate(tab.id) }
                 .disabled(tab.url == nil)
+            Button(L10n.string("tab.sleep")) { tabManager.sleep(tab.id) }
+                .disabled(isSelected || tab.url == nil || tab.state != .background)
             Button(L10n.string("tab.moveToNewWindow")) { tabManager.onMoveToNewWindow?(tab.id) }
                 .disabled(tabManager.tabs.count < 2)
             Button(L10n.string(tab.isPinned ? "tab.unpin" : "tab.pin")) { tabManager.togglePin(tab.id) }

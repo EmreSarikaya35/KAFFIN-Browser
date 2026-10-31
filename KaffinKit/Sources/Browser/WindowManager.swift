@@ -15,6 +15,13 @@ public final class WindowManager: NSObject {
     private let profiles = ProfileList()
     private let search = SearchSettings()
     private let accent = AccentSettings()
+    private let performance = PerformanceSettings()
+    private lazy var sleepScheduler = TabSleepScheduler(settings: performance) { [weak self] trigger in
+        guard let self else { return }
+        for controller in controllers {
+            await controller.sleepEligibleTabs(performance, trigger: trigger)
+        }
+    }
     private var sessions: [UUID: ProfileSession] = [:]
     private var controllers: [BrowserWindowController] = []
     private var isStarted = false
@@ -36,6 +43,7 @@ public final class WindowManager: NSObject {
     public func start() {
         AppearanceController.shared.applySavedMode()
         NSApp.mainMenu = MainMenuBuilder.build(windowManager: self)
+        sleepScheduler.start()
         Task {
             for profile in profiles.profiles {
                 let session = session(for: profile.id)
@@ -221,6 +229,7 @@ public final class WindowManager: NSObject {
             navigation: session.settingsNavigation,
             search: search,
             accent: accent,
+            performance: performance,
             passwords: session.passwords
         ) { [weak self] in
             self?.setAsDefaultBrowser(nil)

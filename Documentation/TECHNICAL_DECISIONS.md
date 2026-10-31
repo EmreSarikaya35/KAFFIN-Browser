@@ -70,6 +70,14 @@ The profile list is stored in UserDefaults rather than the planned application d
 
 Search engine and appearance remain app-wide, although the plan lists preferences per profile.
 
+## Tab sleeping
+
+Sleeping swaps the tab's WKWebView for a new one with no page, keeping the saved state in memory. The `Tab` object stays, so `webView` is never optional. Selecting the tab restores it through the same path as session restore.
+
+Automatic sleeping is gated in `TabManager.sleepEligibleTabs` by `PerformanceSettings`: Standard allows nothing, and `TabSleepScheduler` starts no timer or memory listener. Any media state other than none counts as media, because WebKit's playing and paused values proved unreliable.
+
+Measured in the sandboxed Release app with two heavy pages and one muted audio page: WebKit content went from 3 processes and 704 MB to 1 process and 29 MB. The audio tab stayed awake. Windowless tests cannot load media, so this protection rests on that measurement and the `SleepPolicy` unit tests.
+
 ## Open sandbox question
 
 The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.

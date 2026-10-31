@@ -6,6 +6,7 @@ import SwiftUI
 public enum SettingsPane: Hashable, Sendable {
     case general
     case passwords
+    case performance
 }
 
 @MainActor
@@ -19,6 +20,7 @@ public struct SettingsView: View {
     @Bindable var navigation: SettingsNavigation
     let search: SearchSettings
     let accent: AccentSettings
+    let performance: PerformanceSettings
     let passwords: PasswordsModel
     let onSetDefault: () -> Void
 
@@ -26,12 +28,14 @@ public struct SettingsView: View {
         navigation: SettingsNavigation,
         search: SearchSettings,
         accent: AccentSettings,
+        performance: PerformanceSettings,
         passwords: PasswordsModel,
         onSetDefault: @escaping () -> Void
     ) {
         self.navigation = navigation
         self.search = search
         self.accent = accent
+        self.performance = performance
         self.passwords = passwords
         self.onSetDefault = onSetDefault
     }
@@ -44,6 +48,9 @@ public struct SettingsView: View {
             PasswordsSettingsView(model: passwords)
                 .tabItem { Text(L10n.string("settings.passwords")) }
                 .tag(SettingsPane.passwords)
+            PerformanceSettingsView(settings: performance)
+                .tabItem { Text(L10n.string("settings.performance")) }
+                .tag(SettingsPane.performance)
         }
         .padding(16)
         .frame(width: 560, height: 420)
@@ -108,6 +115,57 @@ private struct GeneralSettingsView: View {
             } else if template.isEmpty {
                 template = "https://"
             }
+        }
+    }
+}
+
+private struct PerformanceSettingsView: View {
+    @Bindable var settings: PerformanceSettings
+    @State private var excludedText = ""
+    @State private var memory: Int64?
+
+    var body: some View {
+        Form {
+            Picker(L10n.string("performance.profile"), selection: profile) {
+                ForEach(OptimizationProfile.allCases, id: \.self) {
+                    Text(L10n.string("performance.\($0.rawValue)")).tag($0)
+                }
+            }
+            Text(L10n.string("performance.\(settings.profile.rawValue)Detail"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if settings.sleepsIdleTabs {
+                Stepper(value: $settings.idleMinutes, in: 5...240, step: 5) {
+                    Text(String(format: L10n.string("performance.idleMinutes"), settings.idleMinutes))
+                }
+            }
+            if settings.sleepsUnderMemoryPressure {
+                Toggle(L10n.string("performance.protectPinned"), isOn: $settings.protectsPinnedTabs)
+                TextField(L10n.string("performance.excluded"), text: $excludedText, prompt: Text(L10n.string("performance.excludedHint")))
+                    .onSubmit { settings.excludedSites = PerformanceSettings.sites(from: excludedText) }
+            }
+            if let memory {
+                Text(String(format: L10n.string("performance.memory"), memory.formatted(.byteCount(style: .memory))))
+                Text(L10n.string("performance.memoryNote")).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .onAppear {
+            excludedText = settings.excludedSites.joined(separator: ", ")
+            memory = ProcessMemory.footprint()
+        }
+    }
+
+    /// Automatic sleeping can lose work on a page, so turning it on always takes a confirmation.
+    private var profile: Binding<OptimizationProfile> {
+        Binding {
+            settings.profile
+        } set: { profile in
+            if profile == .aggressiveSaving, !Prompts.confirm(
+                L10n.string("performance.confirmTitle"),
+                detail: L10n.string("performance.confirmDetail"),
+                action: L10n.string("performance.confirmAction")
+            ) { return }
+            settings.profile = profile
         }
     }
 }

@@ -76,13 +76,7 @@ public final class TabManager {
 
     @discardableResult
     private func addTab(configuration: WKWebViewConfiguration?, restoring session: SessionTab? = nil) -> Tab {
-        let webView = factory.makeWebView(configuration: configuration)
-        webView.navigationDelegate = navigationManager
-        webView.uiDelegate = navigationManager
-        // A popup's configuration comes from its opener, which already has the bridge.
-        if credentials != nil, configuration == nil {
-            loginBridge.install(on: webView.configuration.userContentController)
-        }
+        let webView = makeWebView(configuration: configuration)
         let tab = Tab(webView: webView, state: .background, restoring: session)
         connectTitle(of: tab)
         if let favicons, let key = session.flatMap({ Self.faviconKey(for: $0.url) }) {
@@ -98,18 +92,32 @@ public final class TabManager {
         return tab
     }
 
+    private func makeWebView(configuration: WKWebViewConfiguration?) -> WKWebView {
+        let webView = factory.makeWebView(configuration: configuration)
+        webView.navigationDelegate = navigationManager
+        webView.uiDelegate = navigationManager
+        // A popup's configuration comes from its opener, which already has the bridge.
+        if credentials != nil, configuration == nil {
+            loginBridge.install(on: webView.configuration.userContentController)
+        }
+        return webView
+    }
+
     private func connectTitle(of tab: Tab) {
         tab.onTitleChange = { [weak self] url, title in self?.onPageTitle?(url, title) }
     }
 
     public func select(_ id: Tab.ID) {
         guard id != selectedTabID, let tab = tabs.first(where: { $0.id == id }) else { return }
-        selectedTab?.transition(to: .background)
+        if let previous = selectedTab {
+            previous.lastActiveAt = .now
+            previous.transition(to: .background)
+        }
         selectedTabID = id
-        if tab.state == .failed {
-            recover(tab)
-        } else {
-            tab.transition(to: .active)
+        switch tab.state {
+        case .failed: recover(tab)
+        case .sleeping: tab.transition(to: .restoring)
+        default: tab.transition(to: .active)
         }
         tab.startPendingLoad()
         onSelectionChange?(tab)
@@ -208,6 +216,49 @@ public final class TabManager {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         tab.isMuted.toggle()
         await TabAudioMuter.apply(muted: tab.isMuted, to: tab.webView)
+    }
+
+    /// Keeps the tab in the strip and frees its page. Selecting it loads the page again.
+    @discardableResult
+    public func sleep(_ id: Tab.ID) -> Bool {
+        guard id != selectedTabID, let tab = tabs.first(where: { $0.id == id }),
+              tab.state == .background, tab.url != nil else { return false }
+        if tab.isAwaitingLoad {
+            tab.transition(to: .sleeping)
+        } else {
+            tab.fallAsleep(into: makeWebView(configuration: nil))
+        }
+        onChange?()
+        return true
+    }
+
+    /// Automatic sleeping starts and stops here: without a profile that allows the trigger, nothing happens.
+    public func sleepEligibleTabs(_ settings: PerformanceSettings, trigger: SleepTrigger, now: Date = .now) async {
+        let isAllowed = trigger == .idle ? settings.sleepsIdleTabs : settings.sleepsUnderMemoryPressure
+        guard isAllowed else { return }
+        for tab in tabs where tab.id != selectedTabID && tab.state == .background && !tab.isAwaitingLoad {
+            let webView = tab.webView
+            let media = await webView.requestMediaPlaybackState()
+            let candidate = SleepCandidate(
+                lastActiveAt: tab.lastActiveAt,
+                isPinned: tab.isPinned,
+                host: webView.url.flatMap(SiteMatch.siteHost),
+                // Any media counts: WebKit's playing and paused states proved unreliable in testing.
+                hasMedia: media != .none,
+                isCapturing: webView.cameraCaptureState != .none || webView.microphoneCaptureState != .none,
+                hasActiveDownload: downloads.hasActiveDownload(in: webView),
+                hasLoginPrompt: tab.loginPrompt != nil
+            )
+            let allowed = SleepPolicy.allows(
+                candidate,
+                idleMinutes: settings.idleMinutes,
+                protectsPinnedTabs: settings.protectsPinnedTabs,
+                excludedSites: settings.excludedSites,
+                requiringIdle: trigger == .idle,
+                now: now
+            )
+            if allowed { sleep(tab.id) }
+        }
     }
 
     public func selectTab(at index: Int) {

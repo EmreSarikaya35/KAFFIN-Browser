@@ -85,6 +85,10 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
         items.first { $0.download === download }
     }
 
+    public func hasActiveDownload(in webView: WKWebView) -> Bool {
+        items.contains { $0.state == .downloading && $0.download.webView === webView }
+    }
+
     public func attach(_ download: WKDownload) {
         let item = DownloadItem(download: download)
         items.insert(item, at: 0)

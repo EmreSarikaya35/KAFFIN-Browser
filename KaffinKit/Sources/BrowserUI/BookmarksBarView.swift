@@ -135,12 +135,12 @@ struct BookmarksBarView: View {
             newFolderButton(parent: folder.id)
             Button(L10n.string("bookmark.renameFolder")) {
                 guard let id = folder.id,
-                      let title = BookmarkPrompts.folderName(L10n.string("bookmark.renameFolder"), current: folder.title)
+                      let title = Prompts.name(L10n.string("bookmark.renameFolder"), current: folder.title, placeholder: L10n.string("bookmark.folderName"))
                 else { return }
                 Task { await bookmarks.renameFolder(id, to: title) }
             }
             Button(L10n.string("bookmark.deleteFolder"), role: .destructive) {
-                guard let id = folder.id, BookmarkPrompts.confirmDelete(folder) else { return }
+                guard let id = folder.id, Prompts.confirmDelete(String(format: L10n.string("bookmark.deleteConfirm"), folder.title), detail: L10n.string("bookmark.deleteDetail")) else { return }
                 Task { await bookmarks.deleteFolder(id) }
             }
         })
@@ -148,7 +148,7 @@ struct BookmarksBarView: View {
 
     private func newFolderButton(parent: Int64?) -> some View {
         Button(L10n.string("bookmark.newFolder")) {
-            guard let title = BookmarkPrompts.folderName(L10n.string("bookmark.newFolder"), current: "") else { return }
+            guard let title = Prompts.name(L10n.string("bookmark.newFolder"), current: "", placeholder: L10n.string("bookmark.folderName")) else { return }
             Task { await bookmarks.createFolder(title: title, parent: parent) }
         }
     }
@@ -174,13 +174,13 @@ struct BookmarksBarView: View {
 }
 
 @MainActor
-private enum BookmarkPrompts {
-    static func folderName(_ title: String, current: String) -> String? {
+public enum Prompts {
+    public static func name(_ title: String, current: String, placeholder: String) -> String? {
         let alert = NSAlert()
         alert.messageText = title
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.stringValue = current
-        field.placeholderString = L10n.string("bookmark.folderName")
+        field.placeholderString = placeholder
         alert.accessoryView = field
         alert.addButton(withTitle: L10n.string("password.save"))
         alert.addButton(withTitle: L10n.string("history.cancel"))
@@ -190,11 +190,11 @@ private enum BookmarkPrompts {
         return name.isEmpty ? nil : name
     }
 
-    /// Deleting a folder removes everything inside it, which cannot be undone.
-    static func confirmDelete(_ folder: BookmarkTree) -> Bool {
+    /// For deletions that remove things which cannot be brought back.
+    public static func confirmDelete(_ title: String, detail: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = String(format: L10n.string("bookmark.deleteConfirm"), folder.title)
-        alert.informativeText = L10n.string("bookmark.deleteDetail")
+        alert.messageText = title
+        alert.informativeText = detail
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.string("history.delete"))
         alert.addButton(withTitle: L10n.string("history.cancel"))

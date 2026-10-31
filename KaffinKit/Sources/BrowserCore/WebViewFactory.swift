@@ -21,6 +21,17 @@ public final class WebViewFactory {
         WebViewFactory(dataStore: .nonPersistent())
     }
 
+    /// WebKit refuses while a WebView still uses the store, so closing windows first is not always enough at once.
+    public static func removeProfileData(_ id: UUID) async throws {
+        for attempt in 1...10 {
+            do {
+                return try await WKWebsiteDataStore.remove(forIdentifier: id)
+            } catch where attempt < 10 {
+                try await Task.sleep(for: .milliseconds(300))
+            }
+        }
+    }
+
     /// WKWebView's default user agent has no Safari token, which some sites read as an embedded view.
     public static var userAgentToken: String {
         let os = ProcessInfo.processInfo.operatingSystemVersion

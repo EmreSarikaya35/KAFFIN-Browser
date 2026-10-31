@@ -10,6 +10,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let tabManager: TabManager
     private let bookmarks: BookmarksModel
     let isPrivate: Bool
+    let profileID: UUID
+    private let profileMenu: ProfileMenu?
     private let webContainer = NSView()
     private var newTabHost: NSHostingView<NewTabView>!
     private var findHost: NSHostingView<FindBarView>!
@@ -38,11 +40,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         credentials: (any CredentialStoring)?,
         favicons: FaviconLoader?,
         suggestions: SuggestionsModel,
+        profileID: UUID,
+        profileMenu: ProfileMenu?,
         isPrivate: Bool,
         session: SessionWindow?,
         adopting tab: Tabs.Tab? = nil
     ) {
         self.factory = factory
+        self.profileID = profileID
+        self.profileMenu = profileMenu
         tabManager = TabManager(
             factory: factory,
             downloads: downloads,
@@ -191,6 +197,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             downloads: downloads,
             search: search,
             suggestions: suggestions,
+            profileMenu: profileMenu,
             isPrivate: isPrivate,
             focusRequest: focusRequest
         ) { [weak self] in

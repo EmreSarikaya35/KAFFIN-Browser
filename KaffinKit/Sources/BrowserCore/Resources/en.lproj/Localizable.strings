@@ -1,4 +1,13 @@
 "tab.new" = "New Tab";
+"profile.default" = "Personal";
+"profile.menu" = "Profile: %@";
+"profile.add" = "Add Profile";
+"profile.rename" = "Rename Profile";
+"profile.delete" = "Delete Profile";
+"profile.name" = "Profile name";
+"profile.deleteConfirm" = "Delete the profile %@?";
+"profile.deleteDetail" = "Its bookmarks, history, passwords and website data are removed from this Mac. This cannot be undone.";
+"profile.deleteFailed" = "Some of this profile's data could not be removed.";
 "tab.moveToNewWindow" = "Move Tab to New Window";
 "tab.pin" = "Pin Tab";
 "tab.unpin" = "Unpin Tab";

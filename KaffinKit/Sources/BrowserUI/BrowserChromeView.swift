@@ -3,6 +3,32 @@ import BrowserCore
 import SwiftUI
 import Tabs
 
+/// Nil on private windows, which belong to no switchable profile.
+public struct ProfileMenu {
+    let list: ProfileList
+    let current: UUID
+    let onOpen: (UUID) -> Void
+    let onAdd: () -> Void
+    let onRename: () -> Void
+    let onDelete: () -> Void
+
+    public init(
+        list: ProfileList,
+        current: UUID,
+        onOpen: @escaping (UUID) -> Void,
+        onAdd: @escaping () -> Void,
+        onRename: @escaping () -> Void,
+        onDelete: @escaping () -> Void
+    ) {
+        self.list = list
+        self.current = current
+        self.onOpen = onOpen
+        self.onAdd = onAdd
+        self.onRename = onRename
+        self.onDelete = onDelete
+    }
+}
+
 /// Tab strip and toolbar, laid out after Chrome: the active tab merges into the toolbar below it.
 public struct BrowserChromeView: View {
     public static let height: CGFloat = 84
@@ -13,6 +39,7 @@ public struct BrowserChromeView: View {
     let downloads: DownloadManager
     let search: SearchSettings
     let suggestions: SuggestionsModel
+    let profileMenu: ProfileMenu?
     let isPrivate: Bool
     let focusRequest: Int
     let onSubmit: (String) -> Void
@@ -26,6 +53,7 @@ public struct BrowserChromeView: View {
         downloads: DownloadManager,
         search: SearchSettings,
         suggestions: SuggestionsModel,
+        profileMenu: ProfileMenu?,
         isPrivate: Bool,
         focusRequest: Int,
         onSubmit: @escaping (String) -> Void
@@ -35,6 +63,7 @@ public struct BrowserChromeView: View {
         self.downloads = downloads
         self.search = search
         self.suggestions = suggestions
+        self.profileMenu = profileMenu
         self.isPrivate = isPrivate
         self.focusRequest = focusRequest
         self.onSubmit = onSubmit
@@ -76,6 +105,7 @@ public struct BrowserChromeView: View {
             .onChange(of: downloads.items.count) { old, new in
                 if new > old, activeState == .key { isShowingDownloads = true }
             }
+            if let profileMenu { ProfileButton(menu: profileMenu) }
             mainMenu
         }
         .padding(.horizontal, 10)
@@ -168,6 +198,42 @@ public struct BrowserChromeView: View {
         .buttonStyle(.borderless)
         .disabled(!enabled)
         .accessibilityLabel(L10n.string(key))
+    }
+}
+
+private struct ProfileButton: View {
+    let menu: ProfileMenu
+
+    private var current: Profile? { menu.list.profiles.first { $0.id == menu.current } }
+
+    var body: some View {
+        Menu {
+            ForEach(menu.list.profiles) { profile in
+                Button {
+                    menu.onOpen(profile.id)
+                } label: {
+                    if profile.id == menu.current {
+                        Label(profile.name, systemImage: "checkmark")
+                    } else {
+                        Text(profile.name)
+                    }
+                }
+            }
+            Divider()
+            Button(L10n.string("profile.add"), action: menu.onAdd)
+            Button(L10n.string("profile.rename"), action: menu.onRename)
+            Button(L10n.string("profile.delete"), role: .destructive, action: menu.onDelete)
+                .disabled(menu.current == WebViewFactory.defaultProfileID)
+        } label: {
+            Text(String(current?.name.prefix(1) ?? "").uppercased())
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .background(ChromePalette.field, in: Circle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel(String(format: L10n.string("profile.menu"), current?.name ?? ""))
     }
 }
 

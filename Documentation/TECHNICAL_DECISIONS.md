@@ -62,6 +62,14 @@ The tab strip fills the titlebar area, so the chrome's hosting view uses `safeAr
 
 Import and export use the Netscape bookmark HTML format. The file is outside data: only http and https addresses are kept, nesting is capped at 32 levels, and files over 50 MB are refused. Import runs in one transaction, skips addresses already saved, and merges folders with the same name and parent. Chrome's bookmarks bar folder maps to the KAFFIN bar root.
 
+## Profiles
+
+`ProfileSession` owns one profile's data store, database, Keychain service, bookmarks, history, downloads, and its History and Settings windows. The default profile keeps its original identifier, so existing data stays in place.
+
+The profile list is stored in UserDefaults rather than the planned application database, because it is a short list with no relations. The default profile cannot be deleted. Deleting a profile removes its Keychain items, WebKit data store, and database folder, after its windows close. This was verified in the sandboxed Release app.
+
+Search engine and appearance remain app-wide, although the plan lists preferences per profile.
+
 ## Open sandbox question
 
 The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.

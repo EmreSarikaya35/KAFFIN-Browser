@@ -8,11 +8,12 @@ final class LocalTestServer: @unchecked Sendable {
 
     init() async throws {
         listener = try NWListener(using: .tcp, on: .any)
-        listener.newConnectionHandler = { [queue] connection in
+        listener.newConnectionHandler = { [weak self, queue] connection in
             connection.start(queue: queue)
             connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, _, _ in
                 let line = data.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: "\r\n").first ?? ""
                 let path = line.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
+                self?.record(path)
                 Self.respond(to: path, on: connection, queue: queue)
             }
         }
@@ -23,6 +24,15 @@ final class LocalTestServer: @unchecked Sendable {
             }
             listener.start(queue: queue)
         }
+    }
+
+    private let lock = NSLock()
+    private var paths: [String] = []
+
+    var requestedPaths: [String] { lock.withLock { paths } }
+
+    private func record(_ path: String) {
+        lock.withLock { paths.append(path) }
     }
 
     var baseURL: URL { URL(string: "http://127.0.0.1:\(listener.port?.rawValue ?? 0)")! }
@@ -43,8 +53,16 @@ final class LocalTestServer: @unchecked Sendable {
                     connection.cancel()
                 })
             }
+        case "/icon.png", "/favicon.ico":
+            let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: \(png.count)\r\nConnection: close\r\n\r\n"
+            connection.send(content: Data(head.utf8) + png, isComplete: true, completion: .contentProcessed { _ in
+                connection.cancel()
+            })
         default:
             let html = switch path {
+            case "/iconpage":
+                "<!doctype html><title>Icon</title><link rel=icon href=/icon.png><p>ok"
             case "/login":
                 "<!doctype html><title>Login</title><form id=f action=/page onsubmit='return false'>"
                     + "<input id=u type=text name=user><input id=p type=password name=pass></form>"

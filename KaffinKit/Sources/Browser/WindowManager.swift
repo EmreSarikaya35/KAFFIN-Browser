@@ -22,6 +22,7 @@ public final class WindowManager: NSObject {
     private let search = SearchSettings()
     private let credentials = KeychainCredentialStore(profileID: WebViewFactory.defaultProfileID)
     private lazy var passwords = PasswordsModel(store: credentials)
+    private lazy var favicons = FaviconLoader(store: database)
     private let settingsNavigation = SettingsNavigation()
     private var settingsWindow: NSWindow?
 
@@ -47,6 +48,8 @@ public final class WindowManager: NSObject {
             downloads: downloads,
             search: search,
             credentials: credentials,
+            favicons: favicons,
+            suggestions: SuggestionsModel(history: database) { [bookmarks] in bookmarks.items },
             isPrivate: false,
             session: session
         )
@@ -78,6 +81,8 @@ public final class WindowManager: NSObject {
             downloads: DownloadManager(),
             search: search,
             credentials: nil,
+            favicons: nil,
+            suggestions: SuggestionsModel(history: nil) { [bookmarks] in bookmarks.items },
             isPrivate: true,
             session: nil
         ))

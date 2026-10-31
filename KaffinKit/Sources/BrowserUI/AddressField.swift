@@ -7,6 +7,9 @@ struct AddressField: NSViewRepresentable {
     let placeholder: String
     let focusRequest: Int
     let onSubmit: (String) -> Void
+    let onEdit: (String) -> Void
+    let onMoveSelection: (Int) -> Void
+    let onEndEditing: () -> Void
 
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField()
@@ -46,8 +49,22 @@ struct AddressField: NSViewRepresentable {
             handledFocusRequest = parent.focusRequest
         }
 
+        func controlTextDidChange(_ notification: Notification) {
+            if let field = notification.object as? NSTextField { parent.onEdit(field.stringValue) }
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            parent.onEndEditing()
+        }
+
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
             switch selector {
+            case #selector(NSResponder.moveDown(_:)):
+                parent.onMoveSelection(1)
+                return true
+            case #selector(NSResponder.moveUp(_:)):
+                parent.onMoveSelection(-1)
+                return true
             case #selector(NSResponder.insertNewline(_:)):
                 parent.onSubmit(textView.string)
                 control.window?.makeFirstResponder(nil)
@@ -55,6 +72,7 @@ struct AddressField: NSViewRepresentable {
             case #selector(NSResponder.cancelOperation(_:)):
                 textView.string = parent.text
                 textView.selectAll(nil)
+                parent.onEndEditing()
                 return true
             default:
                 return false

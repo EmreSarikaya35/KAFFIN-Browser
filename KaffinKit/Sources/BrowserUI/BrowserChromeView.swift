@@ -12,6 +12,7 @@ public struct BrowserChromeView: View {
     let bookmarks: BookmarksModel
     let downloads: DownloadManager
     let search: SearchSettings
+    let suggestions: SuggestionsModel
     let isPrivate: Bool
     let focusRequest: Int
     let onSubmit: (String) -> Void
@@ -24,6 +25,7 @@ public struct BrowserChromeView: View {
         bookmarks: BookmarksModel,
         downloads: DownloadManager,
         search: SearchSettings,
+        suggestions: SuggestionsModel,
         isPrivate: Bool,
         focusRequest: Int,
         onSubmit: @escaping (String) -> Void
@@ -32,6 +34,7 @@ public struct BrowserChromeView: View {
         self.bookmarks = bookmarks
         self.downloads = downloads
         self.search = search
+        self.suggestions = suggestions
         self.isPrivate = isPrivate
         self.focusRequest = focusRequest
         self.onSubmit = onSubmit
@@ -87,7 +90,18 @@ public struct BrowserChromeView: View {
                 text: AddressDisplay.text(for: tab?.url),
                 placeholder: String(format: L10n.string("address.placeholder"), search.engine.name),
                 focusRequest: focusRequest,
-                onSubmit: onSubmit
+                onSubmit: onSubmit,
+                onEdit: { text in
+                    Task { await suggestions.update(text: text, engine: search.engine) }
+                },
+                onMoveSelection: { suggestions.move(by: $0) },
+                onEndEditing: {
+                    // Leaves time for a click on a row, which may arrive after the field loses focus.
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        suggestions.clear()
+                    }
+                }
             )
             bookmarkButton(for: tab)
         }
@@ -311,6 +325,8 @@ private struct TabItemView: View {
         HStack(spacing: 8) {
             if tab.isLoading {
                 ProgressView().controlSize(.mini)
+            } else if let image = tab.favicon.flatMap(NSImage.init(data:)) {
+                Image(nsImage: image).resizable().frame(width: 16, height: 16)
             } else {
                 Image(systemName: "globe").font(.system(size: 12)).foregroundStyle(.secondary)
             }

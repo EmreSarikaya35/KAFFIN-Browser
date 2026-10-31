@@ -3,7 +3,7 @@ import Foundation
 import GRDB
 
 /// One profile's local data. Keeps SQL out of every other module.
-public final class ProfileDatabase: BookmarkStoring, HistoryStoring {
+public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStoring {
     private let writer: any DatabaseWriter
 
     /// Opens or creates the file, and applies pending migrations.
@@ -48,6 +48,12 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring {
                 t.column("isSelected", .boolean).notNull()
                 t.column("interactionState", .blob)
                 t.primaryKey(["windowIndex", "position"])
+            }
+        }
+        migrator.registerMigration("v2") { db in
+            try db.create(table: "favicons") { t in
+                t.primaryKey("host", .text)
+                t.column("data", .blob).notNull()
             }
         }
         return migrator
@@ -164,6 +170,20 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring {
             try Row.fetchAll(db, sql: "SELECT url, title FROM bookmarks ORDER BY id").compactMap { row in
                 URL(string: row["url"]).map { BookmarkItem(url: $0, title: row["title"]) }
             }
+        }
+    }
+
+    // MARK: Favicons
+
+    public func favicon(host: String) async throws -> Data? {
+        try await writer.read { db in
+            try Data.fetchOne(db, sql: "SELECT data FROM favicons WHERE host = ?", arguments: [host])
+        }
+    }
+
+    public func saveFavicon(host: String, data: Data) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "INSERT OR REPLACE INTO favicons (host, data) VALUES (?, ?)", arguments: [host, data])
         }
     }
 

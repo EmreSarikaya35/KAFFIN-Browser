@@ -1,4 +1,5 @@
 "tab.new" = "New Tab";
+"suggestion.search" = "%@ Search";
 "error.title" = "This page could not be opened";
 "downloads.title" = "Downloads";
 "downloads.empty" = "Files you download appear here.";

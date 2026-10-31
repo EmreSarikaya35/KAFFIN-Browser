@@ -26,14 +26,17 @@ public final class TabManager {
 
     @ObservationIgnored let downloads: DownloadManager
     @ObservationIgnored private let credentials: (any CredentialStoring)?
+    @ObservationIgnored private let favicons: FaviconLoader?
     @ObservationIgnored private lazy var loginBridge = LoginBridge(tabManager: self)
 
     /// Without credentials, as in private windows, no login script runs at all.
     public init(
         factory: WebViewFactory,
         downloads: DownloadManager = DownloadManager(),
-        credentials: (any CredentialStoring)? = nil
+        credentials: (any CredentialStoring)? = nil,
+        favicons: FaviconLoader? = nil
     ) {
+        self.favicons = favicons
         self.factory = factory
         self.downloads = downloads
         self.credentials = credentials
@@ -81,6 +84,10 @@ public final class TabManager {
         }
         let tab = Tab(webView: webView, state: .background, restoring: session)
         tab.onTitleChange = { [weak self] url, title in self?.onPageTitle?(url, title) }
+        if let favicons, let key = session.flatMap({ Self.faviconKey(for: $0.url) }) {
+            tab.faviconHost = key
+            Task { tab.favicon = await favicons.cached(host: key) }
+        }
         if let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
             tabs.insert(tab, at: selectedIndex + 1)
         } else {
@@ -212,10 +219,44 @@ public final class TabManager {
     }
 
     func handleLoadFinished(of tab: Tab) {
-        if !tab.isShowingError, let url = tab.webView.url { onPageVisit?(url, tab.webView.title) }
+        if !tab.isShowingError, let url = tab.webView.url {
+            onPageVisit?(url, tab.webView.title)
+            Task { await loadFavicon(for: tab, url: url) }
+        }
         onChange?()
         guard tab.state == .restoring else { return }
         tab.transition(to: tab.id == selectedTabID ? .active : .background)
+    }
+
+    /// Includes the port, because local sites on different ports are different sites.
+    private static func faviconKey(for url: URL) -> String? {
+        guard url.scheme == "https" || url.scheme == "http", let host = url.host() else { return nil }
+        return url.port.map { "\(host):\($0)" } ?? host
+    }
+
+    func handleCommit(of tab: Tab) {
+        let key = tab.webView.url.flatMap(Self.faviconKey)
+        if key != tab.faviconHost {
+            tab.faviconHost = key
+            tab.favicon = nil
+        }
+    }
+
+    private func loadFavicon(for tab: Tab, url: URL) async {
+        guard let favicons, let key = Self.faviconKey(for: url) else { return }
+        if let icon = await favicons.cached(host: key) {
+            if tab.faviconHost == key { tab.favicon = icon }
+            return
+        }
+        // The default client world, so page scripts cannot tamper with the lookup.
+        let declared = try? await tab.webView.callAsyncJavaScript(
+            "return [...document.querySelectorAll('link[rel~=\"icon\"]')].map((link) => link.href)",
+            contentWorld: .defaultClient
+        ) as? [String]
+        var candidates = (declared ?? []).compactMap(URL.init(string:))
+        if let fallback = URL(string: "/favicon.ico", relativeTo: url)?.absoluteURL { candidates.append(fallback) }
+        let icon = await favicons.icon(host: key, candidates: candidates)
+        if tab.faviconHost == key { tab.favicon = icon }
     }
 
     private func recover(_ tab: Tab) {

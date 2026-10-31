@@ -14,6 +14,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private var newTabHost: NSHostingView<NewTabView>!
     private var findHost: NSHostingView<FindBarView>!
     private var loginHost: NSHostingView<LoginPromptView>!
+    private var suggestionHost: NSHostingView<SuggestionListView>!
+    private let suggestions: SuggestionsModel
     private let downloads: DownloadManager
     private let search: SearchSettings
     private var chromeHost: NSHostingView<BrowserChromeView>!
@@ -32,10 +34,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         downloads: DownloadManager,
         search: SearchSettings,
         credentials: (any CredentialStoring)?,
+        favicons: FaviconLoader?,
+        suggestions: SuggestionsModel,
         isPrivate: Bool,
         session: SessionWindow?
     ) {
-        tabManager = TabManager(factory: factory, downloads: downloads, credentials: credentials)
+        tabManager = TabManager(
+            factory: factory,
+            downloads: downloads,
+            credentials: credentials,
+            favicons: favicons
+        )
+        self.suggestions = suggestions
         self.search = search
         self.bookmarks = bookmarks
         self.downloads = downloads
@@ -69,6 +79,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         updateNewTabPage()
         updateChromeHeight()
         updateLoginPrompt()
+        updateSuggestions()
     }
 
     var snapshot: SessionWindow { tabManager.snapshot() }
@@ -111,6 +122,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         loginHost.translatesAutoresizingMaskIntoConstraints = false
         loginHost.isHidden = true
         content.addSubview(loginHost)
+        suggestionHost = NSHostingView(rootView: SuggestionListView(model: suggestions) { [weak self] in
+            self?.open($0)
+        })
+        suggestionHost.translatesAutoresizingMaskIntoConstraints = false
+        suggestionHost.isHidden = true
+        content.addSubview(suggestionHost)
         NSLayoutConstraint.activate([
             chromeHost.topAnchor.constraint(equalTo: content.topAnchor),
             chromeHost.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -124,6 +141,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             newTabHost.leadingAnchor.constraint(equalTo: webContainer.leadingAnchor),
             newTabHost.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor),
             newTabHost.bottomAnchor.constraint(equalTo: webContainer.bottomAnchor),
+            suggestionHost.topAnchor.constraint(equalTo: chromeHost.bottomAnchor, constant: -6),
+            suggestionHost.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 106),
+            suggestionHost.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -74),
             loginHost.topAnchor.constraint(equalTo: webContainer.topAnchor, constant: 8),
             loginHost.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor, constant: -16),
             findHost.topAnchor.constraint(equalTo: webContainer.topAnchor, constant: 8),
@@ -157,6 +177,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             bookmarks: bookmarks,
             downloads: downloads,
             search: search,
+            suggestions: suggestions,
             isPrivate: isPrivate,
             focusRequest: focusRequest
         ) { [weak self] in
@@ -187,6 +208,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         newTabHost.isHidden = !isBlank
     }
 
+    private func updateSuggestions() {
+        let hasRows = withObservationTracking {
+            !suggestions.items.isEmpty
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.updateSuggestions() }
+        }
+        suggestionHost.isHidden = !hasRows
+    }
+
+    private func open(_ suggestion: Suggestion) {
+        suggestions.clear()
+        tabManager.selectedTab?.load(suggestion.url)
+        window?.makeFirstResponder(tabManager.selectedTab?.webView)
+    }
+
     private func updateLoginPrompt() {
         let hasPrompt = withObservationTracking {
             tabManager.selectedTab?.loginPrompt != nil
@@ -206,6 +242,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func submitAddress(_ text: String) {
+        if let selected = suggestions.selected {
+            open(selected)
+            return
+        }
+        suggestions.clear()
         guard let url = AddressResolver.resolve(text, searchEngine: search.engine),
               let tab = tabManager.selectedTab else { return }
         tab.load(url)

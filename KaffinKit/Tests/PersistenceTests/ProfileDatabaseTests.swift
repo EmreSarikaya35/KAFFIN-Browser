@@ -112,6 +112,15 @@ struct ProfileDatabaseTests {
         #expect(try await db.loadSession() == [windows[1]])
     }
 
+    @Test func faviconsPersistByHost() async throws {
+        let db = try ProfileDatabase.inMemory()
+        try await db.saveFavicon(host: "example.com", data: Data([1]))
+        try await db.saveFavicon(host: "example.com", data: Data([2]))
+
+        #expect(try await db.favicon(host: "example.com") == Data([2]))
+        #expect(try await db.favicon(host: "other.example") == nil)
+    }
+
     // The real path contains "Application Support", so the space matters.
     @Test func dataSurvivesReopeningFile() async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "kaffin test \(UUID())")
@@ -122,6 +131,58 @@ struct ProfileDatabaseTests {
         try await ProfileDatabase(path: path).addBookmark(url: example, title: "A")
         #expect(try await ProfileDatabase(path: path).bookmarks().map(\.title) == ["A"])
         #expect(FileManager.default.fileExists(atPath: folder.appending(path: "profile.sqlite").path(percentEncoded: false)))
+    }
+}
+
+@MainActor
+struct SuggestionsModelTests {
+    private func makeModel() async throws -> (SuggestionsModel, ProfileDatabase) {
+        let db = try ProfileDatabase.inMemory()
+        try await db.recordVisit(url: URL(string: "https://swift.org/")!, title: "Swift", at: .now)
+        return (SuggestionsModel(history: db, bookmarks: { [] }), db)
+    }
+
+    @Test func findsHistoryForTypedText() async throws {
+        let (model, _) = try await makeModel()
+        await model.update(text: "swift", engine: .google)
+        #expect(model.items.contains { $0.kind == .history })
+    }
+
+    @Test func staleResultCannotReplaceNewerText() async throws {
+        let (model, _) = try await makeModel()
+        await model.update(text: "swift", engine: .google)
+        let older = Task { await model.update(text: "s", engine: .google) }
+        await model.update(text: "swift", engine: .google)
+        await older.value
+        #expect(model.items.contains { $0.title == "Swift" })
+    }
+
+    @Test func arrowKeysWrapThroughRowsAndBackToTypedText() async throws {
+        let (model, _) = try await makeModel()
+        await model.update(text: "swift", engine: .google)
+        let count = model.items.count
+
+        #expect(model.selected == nil)
+        model.move(by: 1)
+        #expect(model.selected == model.items[0])
+        model.move(by: -1)
+        #expect(model.selected == nil)
+        model.move(by: -1)
+        #expect(model.selected == model.items[count - 1])
+    }
+
+    @Test func clearingHidesRowsAndDropsLateResults() async throws {
+        let (model, _) = try await makeModel()
+        await model.update(text: "swift", engine: .google)
+        model.clear()
+        #expect(model.items.isEmpty)
+        #expect(model.selected == nil)
+    }
+
+    @Test func privateWindowsSearchNoHistory() async {
+        let model = SuggestionsModel(history: nil, bookmarks: { [] })
+        await model.update(text: "swift", engine: .google)
+        #expect(model.items.map(\.kind) == [.search])
     }
 }
 

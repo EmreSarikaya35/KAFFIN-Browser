@@ -42,6 +42,10 @@ Passwords live only in the Keychain, one service per profile. Login detection ru
 
 Keychain use was verified in the sandboxed Release app. Ad hoc signatures change on each build, so macOS may ask for Keychain access again after rebuilding, until Developer ID signing arrives.
 
+## Favicons
+
+WebKit has no favicon API. Declared icons are read in the default client world, with `/favicon.ico` as the fallback. An ephemeral session fetches them with no cookies, and each host is tried once per launch. Icons are re-encoded to small PNGs and stored by host and port. Private windows fetch no icons.
+
 ## Open sandbox question
 
 The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.

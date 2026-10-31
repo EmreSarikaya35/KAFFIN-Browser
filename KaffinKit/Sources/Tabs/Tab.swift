@@ -17,6 +17,9 @@ public final class Tab: Identifiable {
     /// The URL stays in the address bar, so the security indicator must not vouch for this page.
     public internal(set) var isShowingError = false
     public internal(set) var loginPrompt: LoginPrompt?
+    /// PNG data of the site's icon.
+    public internal(set) var favicon: Data?
+    @ObservationIgnored var faviconHost: String?
 
     var loginOrigin: String? { LoginOrigin.make(from: webView.url) }
 

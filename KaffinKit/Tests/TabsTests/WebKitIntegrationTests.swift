@@ -121,6 +121,51 @@ struct WebKitIntegrationTests {
         #expect(!manager.tabs[0].isShowingError)
     }
 
+    @Test func declaredIconBecomesTabFavicon() async throws {
+        let server = try await LocalTestServer()
+        let manager = TabManager(
+            factory: WebViewFactory(profileID: UUID()),
+            downloads: downloads,
+            favicons: FaviconLoader(store: nil)
+        )
+        let tab = manager.newTab(url: server.baseURL.appending(path: "iconpage"))
+        try await wait("favicon") { tab.favicon != nil }
+    }
+
+    @Test func missingDeclarationFallsBackToFaviconIco() async throws {
+        let server = try await LocalTestServer()
+        let manager = TabManager(
+            factory: WebViewFactory(profileID: UUID()),
+            downloads: downloads,
+            favicons: FaviconLoader(store: nil)
+        )
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("favicon") { tab.favicon != nil }
+    }
+
+    @Test func navigatingToAnotherHostDropsOldIcon() async throws {
+        let server = try await LocalTestServer()
+        let manager = TabManager(
+            factory: WebViewFactory(profileID: UUID()),
+            downloads: downloads,
+            favicons: FaviconLoader(store: nil)
+        )
+        let tab = manager.newTab(url: server.baseURL.appending(path: "iconpage"))
+        try await wait("favicon") { tab.favicon != nil }
+
+        tab.load(URL(string: "about:blank")!)
+        try await wait("icon cleared") { tab.favicon == nil }
+    }
+
+    @Test func tabsWithoutLoaderRequestNoIcon() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "iconpage"))
+        try await wait("page loaded") { !tab.isLoading && tab.title != nil }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(tab.favicon == nil)
+        #expect(!server.requestedPaths.contains("/icon.png"))
+    }
+
     private func makeLoginManager(store: InMemoryCredentialStore) -> TabManager {
         TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads, credentials: store)
     }

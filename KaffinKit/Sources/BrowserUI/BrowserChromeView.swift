@@ -385,6 +385,8 @@ private struct TabItemView: View {
             Button(L10n.string("tab.reload")) { tab.webView.reload() }
             Button(L10n.string("tab.duplicate")) { tabManager.duplicate(tab.id) }
                 .disabled(tab.url == nil)
+            Button(L10n.string("tab.moveToNewWindow")) { tabManager.onMoveToNewWindow?(tab.id) }
+                .disabled(tabManager.tabs.count < 2)
             Button(L10n.string(tab.isPinned ? "tab.unpin" : "tab.pin")) { tabManager.togglePin(tab.id) }
             Button(L10n.string(tab.isMuted ? "tab.unmute" : "tab.mute")) {
                 Task { await tabManager.toggleMute(tab.id) }

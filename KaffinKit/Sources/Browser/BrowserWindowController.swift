@@ -16,7 +16,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private var loginHost: NSHostingView<LoginPromptView>!
     private var suggestionHost: NSHostingView<SuggestionListView>!
     private let suggestions: SuggestionsModel
-    private let downloads: DownloadManager
+    let downloads: DownloadManager
+    let factory: WebViewFactory
     private let search: SearchSettings
     private var chromeHost: NSHostingView<BrowserChromeView>!
     private var focusRequest = 0
@@ -25,6 +26,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var onNewPrivateWindow: (() -> Void)?
     var onShowHistory: (() -> Void)?
     var onShowSettings: ((SettingsPane) -> Void)?
+    var onMoveTabToNewWindow: ((Tabs.Tab, BrowserWindowController) -> Void)?
     private var chromeHeight: NSLayoutConstraint!
 
     /// Private windows get their own factory, and the caller wires no session or history saving.
@@ -37,8 +39,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         favicons: FaviconLoader?,
         suggestions: SuggestionsModel,
         isPrivate: Bool,
-        session: SessionWindow?
+        session: SessionWindow?,
+        adopting tab: Tabs.Tab? = nil
     ) {
+        self.factory = factory
         tabManager = TabManager(
             factory: factory,
             downloads: downloads,
@@ -71,7 +75,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         installContent(in: window)
         tabManager.onSelectionChange = { [weak self] in self?.show($0) }
         tabManager.onLastTabClosed = { [weak self] in self?.window?.close() }
-        if let session, !session.tabs.isEmpty {
+        tabManager.onMoveToNewWindow = { [weak self] id in
+            guard let self, let tab = tabManager.detachTab(id) else { return }
+            onMoveTabToNewWindow?(tab, self)
+        }
+        if let tab {
+            tabManager.adopt(tab)
+        } else if let session, !session.tabs.isEmpty {
             tabManager.restore(session)
         } else {
             tabManager.newTab()

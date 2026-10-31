@@ -5,6 +5,7 @@ import Credentials
 import OSLog
 import Persistence
 import SwiftUI
+import Tabs
 
 /// Entry point for the app target: owns the browser windows, the menu bar and profile data.
 @MainActor
@@ -46,7 +47,7 @@ public final class WindowManager: NSObject {
         openWindow(session: nil)
     }
 
-    private func openWindow(session: SessionWindow?) {
+    private func openWindow(session: SessionWindow?, adopting tab: Tabs.Tab? = nil) {
         let controller = BrowserWindowController(
             factory: factory,
             bookmarks: bookmarks,
@@ -56,7 +57,8 @@ public final class WindowManager: NSObject {
             favicons: favicons,
             suggestions: SuggestionsModel(history: database) { [bookmarks] in bookmarks.items },
             isPrivate: false,
-            session: session
+            session: session,
+            adopting: tab
         )
         controller.trackChanges(
             onChange: { [weak self] in self?.scheduleSessionSave() },
@@ -64,6 +66,7 @@ public final class WindowManager: NSObject {
             onPageTitle: { [weak self] url, title in self?.recordTitle(url: url, title: title) }
         )
         show(controller)
+        scheduleSessionSave()
     }
 
     private func show(_ controller: BrowserWindowController) {
@@ -75,21 +78,34 @@ public final class WindowManager: NSObject {
         controller.onNewPrivateWindow = { [weak self] in self?.openPrivateWindow() }
         controller.onShowHistory = { [weak self] in self?.presentHistory() }
         controller.onShowSettings = { [weak self] in self?.presentSettings($0) }
+        controller.onMoveTabToNewWindow = { [weak self] tab, source in
+            if source.isPrivate {
+                self?.openPrivateWindow(factory: source.factory, downloads: source.downloads, adopting: tab)
+            } else {
+                self?.openWindow(session: nil, adopting: tab)
+            }
+        }
         controllers.append(controller)
         controller.showWindow(nil)
     }
 
-    private func openPrivateWindow() {
+    /// A moved private tab brings its session's factory, so its site data stays with it.
+    private func openPrivateWindow(
+        factory: WebViewFactory = .privateSession(),
+        downloads: DownloadManager = DownloadManager(),
+        adopting tab: Tabs.Tab? = nil
+    ) {
         show(BrowserWindowController(
-            factory: .privateSession(),
+            factory: factory,
             bookmarks: bookmarks,
-            downloads: DownloadManager(),
+            downloads: downloads,
             search: search,
             credentials: nil,
             favicons: nil,
             suggestions: SuggestionsModel(history: nil) { [bookmarks] in bookmarks.items },
             isPrivate: true,
-            session: nil
+            session: nil,
+            adopting: tab
         ))
     }
 

@@ -249,6 +249,48 @@ struct WebKitIntegrationTests {
         #expect(try await audioMuted(tab) == true)
     }
 
+    @Test func movedTabKeepsItsPageAndReportsToNewWindow() async throws {
+        let server = try await LocalTestServer()
+        let target = TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads)
+        _ = manager.newTab()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("page") { tab.title == "Test Page" && !tab.isLoading }
+
+        var oldVisits = 0
+        var newVisits = 0
+        manager.onPageVisit = { _, _ in oldVisits += 1 }
+        target.onPageVisit = { _, _ in newVisits += 1 }
+        target.adopt(try #require(manager.detachTab(tab.id)))
+
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(server.requestedPaths.filter { $0 == "/page" }.count == 1, "Moving must not reload the page")
+
+        tab.load(server.baseURL.appending(path: "iconpage"))
+        try await wait("visit in new window") { newVisits == 1 }
+        #expect(oldVisits == 0)
+    }
+
+    @Test func loginBridgeFollowsMovedTabAfterOldWindowCloses() async throws {
+        let server = try await LocalTestServer()
+        let store = InMemoryCredentialStore()
+        let target = makeLoginManager(store: store)
+        var source: TabManager? = makeLoginManager(store: store)
+        _ = source?.newTab()
+        let tab = try await loadedTab(source!, server.baseURL.appending(path: "login"))
+
+        target.adopt(try #require(source?.detachTab(tab.id)))
+        source = nil
+
+        _ = try await tab.webView.evaluateJavaScript("""
+        document.getElementById('u').value = 'ada';
+        document.getElementById('p').value = 'secret';
+        document.getElementById('f').requestSubmit(); 1
+        """)
+        try await wait("save prompt in new window") { tab.loginPrompt != nil }
+        await target.acceptLoginPrompt(on: tab)
+        #expect(await store.saved.values.contains("secret"))
+    }
+
     private func makeLoginManager(store: InMemoryCredentialStore) -> TabManager {
         TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads, credentials: store)
     }

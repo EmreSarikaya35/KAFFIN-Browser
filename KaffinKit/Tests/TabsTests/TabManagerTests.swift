@@ -284,6 +284,49 @@ struct TabManagerTests {
         #expect(manager.snapshot().tabs.map(\.isPinned) == [true, false])
     }
 
+    @Test func detachingLeavesNeighborSelectedAndKeepsWebView() {
+        let source = makeManager()
+        let stays = source.newTab()
+        let moved = source.newTab()
+        let webView = moved.webView
+
+        #expect(source.detachTab(moved.id) === moved)
+        #expect(source.tabs.map(\.id) == [stays.id])
+        #expect(source.selectedTabID == stays.id)
+        #expect(moved.webView === webView)
+        #expect(moved.webView.navigationDelegate != nil)
+    }
+
+    @Test func onlyTabCannotBeDetached() {
+        let source = makeManager()
+        let only = source.newTab()
+        #expect(source.detachTab(only.id) == nil)
+        #expect(source.tabs.count == 1)
+    }
+
+    @Test func adoptedTabIsSelectedAndActive() {
+        let source = makeManager()
+        _ = source.newTab()
+        let moved = source.newTab()
+        let target = makeManager()
+
+        target.adopt(source.detachTab(moved.id)!)
+        #expect(target.selectedTabID == moved.id)
+        #expect(moved.state == .active)
+    }
+
+    @Test func adoptedPinnedTabStaysBeforeNormalTabs() {
+        let source = makeManager()
+        _ = source.newTab()
+        let pinned = source.newTab()
+        source.togglePin(pinned.id)
+        let target = makeManager()
+        let normal = target.newTab()
+
+        target.adopt(source.detachTab(pinned.id)!)
+        #expect(target.tabs.map(\.id) == [pinned.id, normal.id])
+    }
+
     private func waitForURL(of tab: Tab) async throws {
         for _ in 0..<100 where tab.url == nil {
             try await Task.sleep(for: .milliseconds(20))

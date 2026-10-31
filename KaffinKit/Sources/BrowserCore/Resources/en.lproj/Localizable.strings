@@ -1,4 +1,5 @@
 "tab.new" = "New Tab";
+"tab.moveToNewWindow" = "Move Tab to New Window";
 "tab.pin" = "Pin Tab";
 "tab.unpin" = "Unpin Tab";
 "tab.mute" = "Mute Tab";

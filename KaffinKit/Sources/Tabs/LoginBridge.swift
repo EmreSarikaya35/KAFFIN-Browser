@@ -43,7 +43,8 @@ final class LoginBridge: NSObject, WKScriptMessageHandler {
     set(password, secret);
     """
 
-    private unowned let tabManager: TabManager
+    /// Weak, because WebKit keeps this handler alive for as long as the page's controller exists.
+    private weak var tabManager: TabManager?
 
     init(tabManager: TabManager) {
         self.tabManager = tabManager
@@ -59,8 +60,15 @@ final class LoginBridge: NSObject, WKScriptMessageHandler {
         controller.add(self, contentWorld: Self.world, name: Self.handlerName)
     }
 
+    /// The script already runs in the moved page, so only its messages change owner.
+    func takeOver(_ controller: WKUserContentController) {
+        controller.removeScriptMessageHandler(forName: Self.handlerName, contentWorld: Self.world)
+        controller.add(self, contentWorld: Self.world, name: Self.handlerName)
+    }
+
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,
+              let tabManager,
               let webView = message.webView,
               let tab = tabManager.tab(for: webView),
               let origin = tab.loginOrigin,

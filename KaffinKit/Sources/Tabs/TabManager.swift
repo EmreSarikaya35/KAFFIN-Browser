@@ -19,6 +19,7 @@ public final class TabManager {
     @ObservationIgnored public var onChange: (() -> Void)?
     @ObservationIgnored public var onPageVisit: ((URL, String?) -> Void)?
     @ObservationIgnored public var onPageTitle: ((URL, String) -> Void)?
+    @ObservationIgnored public var onMoveToNewWindow: ((Tab.ID) -> Void)?
 
     @ObservationIgnored private let factory: WebViewFactory
     @ObservationIgnored private var closedTabURLs: [URL] = []
@@ -83,7 +84,7 @@ public final class TabManager {
             loginBridge.install(on: webView.configuration.userContentController)
         }
         let tab = Tab(webView: webView, state: .background, restoring: session)
-        tab.onTitleChange = { [weak self] url, title in self?.onPageTitle?(url, title) }
+        connectTitle(of: tab)
         if let favicons, let key = session.flatMap({ Self.faviconKey(for: $0.url) }) {
             tab.faviconHost = key
             Task { tab.favicon = await favicons.cached(host: key) }
@@ -95,6 +96,10 @@ public final class TabManager {
         }
         onChange?()
         return tab
+    }
+
+    private func connectTitle(of tab: Tab) {
+        tab.onTitleChange = { [weak self] url, title in self?.onPageTitle?(url, title) }
     }
 
     public func select(_ id: Tab.ID) {
@@ -127,10 +132,33 @@ public final class TabManager {
             onLastTabClosed?()
             return
         }
-        if wasSelected {
-            selectedTabID = nil
-            select(tabs[min(index, tabs.count - 1)].id)
-        }
+        if wasSelected { selectNeighbor(of: index) }
+    }
+
+    private func selectNeighbor(of index: Int) {
+        selectedTabID = nil
+        select(tabs[min(index, tabs.count - 1)].id)
+    }
+
+    /// Takes a tab out with its page still running. The only tab stays, since a window needs one.
+    public func detachTab(_ id: Tab.ID) -> Tab? {
+        guard tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
+        let wasSelected = id == selectedTabID
+        let tab = tabs.remove(at: index)
+        tab.transition(to: .background)
+        onChange?()
+        if wasSelected { selectNeighbor(of: index) }
+        return tab
+    }
+
+    /// Takes over a tab from another window of the same profile, without reloading its page.
+    public func adopt(_ tab: Tab) {
+        tab.webView.navigationDelegate = navigationManager
+        tab.webView.uiDelegate = navigationManager
+        if credentials != nil { loginBridge.takeOver(tab.webView.configuration.userContentController) }
+        connectTitle(of: tab)
+        tabs.insert(tab, at: tab.isPinned ? pinnedCount : tabs.count)
+        select(tab.id)
     }
 
     public func closeOthers(than id: Tab.ID) {

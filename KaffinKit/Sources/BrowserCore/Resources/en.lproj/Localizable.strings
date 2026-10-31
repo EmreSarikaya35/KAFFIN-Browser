@@ -19,6 +19,9 @@
 "downloads.empty" = "Files you download appear here.";
 "downloads.cancel" = "Cancel";
 "downloads.pause" = "Pause";
+"downloads.speed" = "%@/s";
+"downloads.secondsLeft" = "%lld s left";
+"downloads.minutesLeft" = "%lld min left";
 "downloads.paused" = "Paused";
 "downloads.resume" = "Resume";
 "downloads.retry" = "Retry";

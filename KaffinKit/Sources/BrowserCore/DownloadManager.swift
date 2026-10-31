@@ -20,13 +20,31 @@ public final class DownloadItem: Identifiable {
     public fileprivate(set) var fileName: String
     public fileprivate(set) var state = State.downloading
     public fileprivate(set) var fraction = 0.0
+    public fileprivate(set) var receivedBytes: Int64 = 0
+    /// Negative until the server states the size, and for servers that never do.
+    public fileprivate(set) var totalBytes: Int64 = -1
+    public fileprivate(set) var bytesPerSecond: Int64 = 0
     public fileprivate(set) var destination: URL?
 
     @ObservationIgnored fileprivate var download: WKDownload
     @ObservationIgnored fileprivate let request: URLRequest?
     @ObservationIgnored fileprivate var resumeData: Data?
+    @ObservationIgnored fileprivate var rate = TransferRate()
+    @ObservationIgnored fileprivate var lastUpdate = Date.distantPast
     @ObservationIgnored fileprivate var progress: NSKeyValueObservation?
     @ObservationIgnored fileprivate var stagedFile: URL?
+
+    /// Progress fires per network chunk, so the visible numbers change only a few times a second.
+    fileprivate func update(_ fraction: Double, received: Int64, total: Int64) {
+        let now = Date.now
+        rate.record(bytes: received, at: now)
+        guard now.timeIntervalSince(lastUpdate) >= 0.25 else { return }
+        lastUpdate = now
+        self.fraction = fraction
+        receivedBytes = received
+        totalBytes = total
+        bytesPerSecond = rate.bytesPerSecond
+    }
 
     fileprivate init(download: WKDownload) {
         self.download = download
@@ -76,11 +94,14 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     private func follow(_ download: WKDownload, for item: DownloadItem) {
         download.delegate = self
         item.download = download
+        item.rate = TransferRate()
+        item.bytesPerSecond = 0
         item.progress = download.progress.observe(\.fractionCompleted) { [weak item] progress, _ in
             let fraction = progress.fractionCompleted
+            let received = progress.completedUnitCount
+            let total = progress.totalUnitCount
             Task { @MainActor in
-                // Progress fires per network chunk; a whole-percent step is enough for the UI.
-                if let item, fraction - item.fraction >= 0.01 { item.fraction = fraction }
+                if let item, item.state == .downloading { item.update(fraction, received: received, total: total) }
             }
         }
     }
@@ -165,6 +186,9 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     public func downloadDidFinish(_ download: WKDownload) {
         guard let item = item(for: download), let staged = item.stagedFile, let folder else { return }
         item.progress = nil
+        item.receivedBytes = download.progress.completedUnitCount
+        item.totalBytes = download.progress.totalUnitCount
+        item.bytesPerSecond = 0
         defer { removeStagingFolder(of: item) }
         do {
             try markQuarantined(staged, source: download.originalRequest?.url)

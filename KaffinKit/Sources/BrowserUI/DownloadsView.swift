@@ -18,6 +18,13 @@ struct DownloadsView: View {
         .frame(width: 340, alignment: .leading)
     }
 
+    private func status(_ item: DownloadItem, speed: Int64) -> some View {
+        Text(DownloadStatus.text(received: item.receivedBytes, total: item.totalBytes, bytesPerSecond: speed))
+            .font(.system(size: 11))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+    }
+
     private func retryButton(_ item: DownloadItem) -> some View {
         Button(L10n.string("downloads.retry")) { Task { await downloads.resume(item) } }.buttonStyle(.link)
     }
@@ -32,7 +39,9 @@ struct DownloadsView: View {
                     Button(L10n.string("downloads.pause")) { Task { await downloads.pause(item) } }.buttonStyle(.link)
                     Button(L10n.string("downloads.cancel")) { downloads.cancel(item) }.buttonStyle(.link)
                 }
+                status(item, speed: item.bytesPerSecond)
             case .paused:
+                status(item, speed: 0)
                 HStack {
                     Text(L10n.string("downloads.paused")).foregroundStyle(.secondary)
                     Spacer()

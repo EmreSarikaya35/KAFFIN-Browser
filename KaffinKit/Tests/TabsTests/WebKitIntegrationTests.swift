@@ -116,6 +116,8 @@ struct WebKitIntegrationTests {
         try await wait("download finished") { item.state == .finished }
         #expect(file() == Data(repeating: 120, count: 2048))
         #expect(server.rangeRequests.count == 1, "Resuming asks only for the missing bytes")
+        #expect(item.receivedBytes == 2048)
+        #expect(item.totalBytes == 2048)
     }
 
     @Test func serverWithoutResumeSupportRestartsCleanly() async throws {
@@ -162,6 +164,15 @@ struct WebKitIntegrationTests {
         #expect(downloads.items.isEmpty)
         let staged = try FileManager.default.contentsOfDirectory(at: DownloadManager.stagingRoot, includingPropertiesForKeys: nil)
         #expect(staged.isEmpty)
+    }
+
+    @Test func finishedDownloadReportsItsSize() async throws {
+        let server = try await LocalTestServer()
+        manager.newTab(url: server.baseURL.appending(path: "file"))
+        try await wait("download finished") { downloads.items.first?.state == .finished }
+
+        #expect(downloads.items.first?.receivedBytes == 2048)
+        #expect(downloads.items.first?.totalBytes == 2048)
     }
 
     @Test func refusedConnectionShowsErrorPageAndRecordsNoVisit() async throws {

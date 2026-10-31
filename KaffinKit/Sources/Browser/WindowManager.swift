@@ -1,6 +1,7 @@
 import AppKit
 import BrowserCore
 import BrowserUI
+import Credentials
 import OSLog
 import Persistence
 import SwiftUI
@@ -18,6 +19,11 @@ public final class WindowManager: NSObject {
     private var historyWindow: NSWindow?
     private var saveTask: Task<Void, Never>?
     private let downloads = DownloadManager()
+    private let search = SearchSettings()
+    private let credentials = KeychainCredentialStore(profileID: WebViewFactory.defaultProfileID)
+    private lazy var passwords = PasswordsModel(store: credentials)
+    private let settingsNavigation = SettingsNavigation()
+    private var settingsWindow: NSWindow?
 
     public func start() {
         AppearanceController.shared.applySavedMode()
@@ -39,6 +45,8 @@ public final class WindowManager: NSObject {
             factory: factory,
             bookmarks: bookmarks,
             downloads: downloads,
+            search: search,
+            credentials: credentials,
             isPrivate: false,
             session: session
         )
@@ -58,6 +66,7 @@ public final class WindowManager: NSObject {
         controller.onNewWindow = { [weak self] in self?.openWindow() }
         controller.onNewPrivateWindow = { [weak self] in self?.openPrivateWindow() }
         controller.onShowHistory = { [weak self] in self?.presentHistory() }
+        controller.onShowSettings = { [weak self] in self?.presentSettings($0) }
         controllers.append(controller)
         controller.showWindow(nil)
     }
@@ -67,9 +76,27 @@ public final class WindowManager: NSObject {
             factory: .privateSession(),
             bookmarks: bookmarks,
             downloads: DownloadManager(),
+            search: search,
+            credentials: nil,
             isPrivate: true,
             session: nil
         ))
+    }
+
+    private func presentSettings(_ pane: SettingsPane) {
+        settingsNavigation.pane = pane
+        if let settingsWindow {
+            settingsWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+        let view = SettingsView(navigation: settingsNavigation, search: search, passwords: passwords) { [weak self] in
+            self?.setAsDefaultBrowser(nil)
+        }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        window.title = L10n.string("settings.title")
+        window.isReleasedWhenClosed = false
+        settingsWindow = window
+        window.makeKeyAndOrderFront(nil)
     }
 
     private func presentHistory() {
@@ -174,6 +201,10 @@ public final class WindowManager: NSObject {
 
     @objc func showHistory(_ sender: Any?) {
         presentHistory()
+    }
+
+    @objc func showSettings(_ sender: Any?) {
+        presentSettings(.general)
     }
 
     @objc func setAsDefaultBrowser(_ sender: Any?) {

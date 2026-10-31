@@ -14,10 +14,12 @@ let package = Package(
     targets: [
         .target(name: "BrowserCore", resources: [.process("Resources")]),
         .target(name: "Persistence", dependencies: ["BrowserCore", .product(name: "GRDB", package: "GRDB.swift")]),
+        .target(name: "Credentials", dependencies: ["BrowserCore"]),
         .target(name: "Tabs", dependencies: ["BrowserCore"]),
         .target(name: "BrowserUI", dependencies: ["BrowserCore", "Tabs"]),
-        .target(name: "Browser", dependencies: ["BrowserCore", "Persistence", "Tabs", "BrowserUI"]),
+        .target(name: "Browser", dependencies: ["BrowserCore", "Credentials", "Persistence", "Tabs", "BrowserUI"]),
         .testTarget(name: "BrowserCoreTests", dependencies: ["BrowserCore"]),
+        .testTarget(name: "CredentialsTests", dependencies: ["Credentials"]),
         .testTarget(name: "PersistenceTests", dependencies: ["Persistence"]),
         .testTarget(name: "TabsTests", dependencies: ["Tabs"]),
     ]

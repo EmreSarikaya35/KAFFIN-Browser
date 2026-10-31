@@ -13,13 +13,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let webContainer = NSView()
     private var newTabHost: NSHostingView<NewTabView>!
     private var findHost: NSHostingView<FindBarView>!
+    private var loginHost: NSHostingView<LoginPromptView>!
     private let downloads: DownloadManager
+    private let search: SearchSettings
     private var chromeHost: NSHostingView<BrowserChromeView>!
     private var focusRequest = 0
     var onClose: ((BrowserWindowController) -> Void)?
     var onNewWindow: (() -> Void)?
     var onNewPrivateWindow: (() -> Void)?
     var onShowHistory: (() -> Void)?
+    var onShowSettings: ((SettingsPane) -> Void)?
     private var chromeHeight: NSLayoutConstraint!
 
     /// Private windows get their own factory, and the caller wires no session or history saving.
@@ -27,10 +30,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         factory: WebViewFactory,
         bookmarks: BookmarksModel,
         downloads: DownloadManager,
+        search: SearchSettings,
+        credentials: (any CredentialStoring)?,
         isPrivate: Bool,
         session: SessionWindow?
     ) {
-        tabManager = TabManager(factory: factory, downloads: downloads)
+        tabManager = TabManager(factory: factory, downloads: downloads, credentials: credentials)
+        self.search = search
         self.bookmarks = bookmarks
         self.downloads = downloads
         self.isPrivate = isPrivate
@@ -62,6 +68,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         updateNewTabPage()
         updateChromeHeight()
+        updateLoginPrompt()
     }
 
     var snapshot: SessionWindow { tabManager.snapshot() }
@@ -91,7 +98,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         chromeHost.translatesAutoresizingMaskIntoConstraints = false
         chromeHeight = chromeHost.heightAnchor.constraint(equalToConstant: BrowserChromeView.height)
         webContainer.translatesAutoresizingMaskIntoConstraints = false
-        newTabHost = NSHostingView(rootView: NewTabView { [weak self] in self?.submitAddress($0) })
+        newTabHost = NSHostingView(rootView: NewTabView(search: search) { [weak self] in self?.submitAddress($0) })
         newTabHost.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(webContainer)
         findHost = NSHostingView(rootView: makeFindBar())
@@ -100,6 +107,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         content.addSubview(newTabHost)
         content.addSubview(chromeHost)
         content.addSubview(findHost)
+        loginHost = NSHostingView(rootView: LoginPromptView(tabManager: tabManager))
+        loginHost.translatesAutoresizingMaskIntoConstraints = false
+        loginHost.isHidden = true
+        content.addSubview(loginHost)
         NSLayoutConstraint.activate([
             chromeHost.topAnchor.constraint(equalTo: content.topAnchor),
             chromeHost.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -113,6 +124,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             newTabHost.leadingAnchor.constraint(equalTo: webContainer.leadingAnchor),
             newTabHost.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor),
             newTabHost.bottomAnchor.constraint(equalTo: webContainer.bottomAnchor),
+            loginHost.topAnchor.constraint(equalTo: webContainer.topAnchor, constant: 8),
+            loginHost.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor, constant: -16),
             findHost.topAnchor.constraint(equalTo: webContainer.topAnchor, constant: 8),
             findHost.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor, constant: -16),
         ])
@@ -143,6 +156,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             tabManager: tabManager,
             bookmarks: bookmarks,
             downloads: downloads,
+            search: search,
             isPrivate: isPrivate,
             focusRequest: focusRequest
         ) { [weak self] in
@@ -173,6 +187,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         newTabHost.isHidden = !isBlank
     }
 
+    private func updateLoginPrompt() {
+        let hasPrompt = withObservationTracking {
+            tabManager.selectedTab?.loginPrompt != nil
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.updateLoginPrompt() }
+        }
+        loginHost.isHidden = !hasPrompt
+    }
+
     private func updateChromeHeight() {
         let isBarVisible = withObservationTracking {
             bookmarks.isBarVisible
@@ -183,7 +206,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func submitAddress(_ text: String) {
-        guard let url = AddressResolver.resolve(text), let tab = tabManager.selectedTab else { return }
+        guard let url = AddressResolver.resolve(text, searchEngine: search.engine),
+              let tab = tabManager.selectedTab else { return }
         tab.load(url)
         window?.makeFirstResponder(tab.webView)
     }
@@ -225,6 +249,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func showHistory(_ sender: Any?) {
         onShowHistory?()
+    }
+
+    @objc func showSettings(_ sender: Any?) {
+        onShowSettings?(.general)
+    }
+
+    @objc func showPasswords(_ sender: Any?) {
+        onShowSettings?(.passwords)
     }
 
     @objc func toggleBookmark(_ sender: Any?) {

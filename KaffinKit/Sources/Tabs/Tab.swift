@@ -16,6 +16,9 @@ public final class Tab: Identifiable {
     public private(set) var canGoForward = false
     /// The URL stays in the address bar, so the security indicator must not vouch for this page.
     public internal(set) var isShowingError = false
+    public internal(set) var loginPrompt: LoginPrompt?
+
+    var loginOrigin: String? { LoginOrigin.make(from: webView.url) }
 
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private var pending: SessionTab?

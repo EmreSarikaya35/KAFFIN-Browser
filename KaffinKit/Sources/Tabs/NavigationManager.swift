@@ -21,7 +21,10 @@ final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        tabManager.tab(for: webView)?.isShowingError = errorPageWebViews.remove(ObjectIdentifier(webView)) != nil
+        guard let tab = tabManager.tab(for: webView) else { return }
+        tab.isShowingError = errorPageWebViews.remove(ObjectIdentifier(webView)) != nil
+        // A fill offer belongs to the page that showed it; a save offer must outlive the login redirect.
+        if case .fill = tab.loginPrompt { tab.loginPrompt = nil }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

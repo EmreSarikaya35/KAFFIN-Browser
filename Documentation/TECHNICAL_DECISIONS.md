@@ -36,6 +36,12 @@ Only the default profile exists so far, so the application database and folder t
 
 WebKit's network process cannot write to `~/Downloads` under App Sandbox. The download stalls with no error, and no sandbox denial is logged for the file. Downloads are staged in the container, marked with `com.apple.quarantine`, then moved by the app, which holds the Downloads entitlement. Verified in the sandboxed Release app on macOS 27.0.1.
 
+## Passwords
+
+Passwords live only in the Keychain, one service per profile. Login detection runs in an isolated `WKContentWorld`, main frame only, and never in private windows. Logins match the exact origin, plain http is refused apart from loopback, and saving or filling always takes a click. Showing a saved password requires Touch ID or the Mac password.
+
+Keychain use was verified in the sandboxed Release app. Ad hoc signatures change on each build, so macOS may ask for Keychain access again after rebuilding, until Developer ID signing arrives.
+
 ## Open sandbox question
 
 The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.

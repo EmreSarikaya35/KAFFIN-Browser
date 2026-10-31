@@ -22,6 +22,7 @@ struct AddressField: NSViewRepresentable {
 
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
+        field.placeholderString = placeholder
         if field.currentEditor() == nil, field.stringValue != text {
             field.stringValue = text
         }

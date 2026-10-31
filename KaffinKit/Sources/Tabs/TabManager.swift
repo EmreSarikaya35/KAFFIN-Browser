@@ -1,5 +1,6 @@
 import BrowserCore
 import Foundation
+import OSLog
 import Observation
 import WebKit
 
@@ -7,6 +8,8 @@ import WebKit
 @MainActor
 @Observable
 public final class TabManager {
+    private static let logger = Logger(subsystem: "com.kaffin.browser", category: "Tabs")
+
     public private(set) var tabs: [Tab] = []
     public private(set) var selectedTabID: Tab.ID?
 
@@ -22,10 +25,18 @@ public final class TabManager {
     @ObservationIgnored private lazy var navigationManager = NavigationManager(tabManager: self)
 
     @ObservationIgnored let downloads: DownloadManager
+    @ObservationIgnored private let credentials: (any CredentialStoring)?
+    @ObservationIgnored private lazy var loginBridge = LoginBridge(tabManager: self)
 
-    public init(factory: WebViewFactory, downloads: DownloadManager = DownloadManager()) {
+    /// Without credentials, as in private windows, no login script runs at all.
+    public init(
+        factory: WebViewFactory,
+        downloads: DownloadManager = DownloadManager(),
+        credentials: (any CredentialStoring)? = nil
+    ) {
         self.factory = factory
         self.downloads = downloads
+        self.credentials = credentials
     }
 
     public var selectedTab: Tab? {
@@ -64,6 +75,10 @@ public final class TabManager {
         let webView = factory.makeWebView(configuration: configuration)
         webView.navigationDelegate = navigationManager
         webView.uiDelegate = navigationManager
+        // A popup's configuration comes from its opener, which already has the bridge.
+        if credentials != nil, configuration == nil {
+            loginBridge.install(on: webView.configuration.userContentController)
+        }
         let tab = Tab(webView: webView, state: .background, restoring: session)
         tab.onTitleChange = { [weak self] url, title in self?.onPageTitle?(url, title) }
         if let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
@@ -143,6 +158,48 @@ public final class TabManager {
     public func selectAdjacentTab(offset: Int) {
         guard let selectedTabID, let index = tabs.firstIndex(where: { $0.id == selectedTabID }) else { return }
         select(tabs[(index + offset + tabs.count) % tabs.count].id)
+    }
+
+    func offerSavedLogins(on tab: Tab, origin: String) async {
+        guard tab.loginPrompt == nil, let logins = try? await credentials?.logins(for: origin), !logins.isEmpty else {
+            return
+        }
+        if tab.loginPrompt == nil, tab.loginOrigin == origin { tab.loginPrompt = .fill(logins) }
+    }
+
+    func offerToSave(_ login: SavedLogin, password: String, on tab: Tab) async {
+        guard let credentials else { return }
+        let existing = try? await credentials.password(for: login)
+        if existing != password {
+            tab.loginPrompt = .save(login, password: password, isUpdate: existing != nil)
+        }
+    }
+
+    public func acceptLoginPrompt(on tab: Tab) async {
+        guard case .save(let login, let password, _) = tab.loginPrompt else { return }
+        do {
+            try await credentials?.save(login, password: password)
+            tab.loginPrompt = nil
+        } catch {
+            // The prompt stays up, so the password is not lost without the user knowing.
+            Self.logger.error("Could not save login: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    public func dismissLoginPrompt(on tab: Tab) {
+        tab.loginPrompt = nil
+    }
+
+    public func fill(_ login: SavedLogin, on tab: Tab) async {
+        guard tab.loginOrigin == login.origin,
+              let password = try? await credentials?.password(for: login),
+              tab.loginOrigin == login.origin else { return }
+        tab.loginPrompt = nil
+        _ = try? await tab.webView.callAsyncJavaScript(
+            LoginBridge.fillScript,
+            arguments: ["username": login.username, "secret": password],
+            contentWorld: LoginBridge.world
+        )
     }
 
     func tab(for webView: WKWebView) -> Tab? {

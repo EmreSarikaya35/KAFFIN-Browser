@@ -120,4 +120,126 @@ struct WebKitIntegrationTests {
         try await wait("real page") { manager.tabs[0].title == "Test Page" }
         #expect(!manager.tabs[0].isShowingError)
     }
+
+    private func makeLoginManager(store: InMemoryCredentialStore) -> TabManager {
+        TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads, credentials: store)
+    }
+
+    private func loadedTab(_ manager: TabManager, _ url: URL) async throws -> Tab {
+        let tab = manager.newTab(url: url)
+        try await wait("page loaded") { tab.title == "Login" && !tab.isLoading }
+        return tab
+    }
+
+    @Test func submittedLoginOffersToSave() async throws {
+        let server = try await LocalTestServer()
+        let store = InMemoryCredentialStore()
+        let manager = makeLoginManager(store: store)
+        let tab = try await loadedTab(manager, server.baseURL.appending(path: "login"))
+
+        _ = try await tab.webView.evaluateJavaScript("""
+        document.getElementById('u').value = 'ada';
+        document.getElementById('p').value = 'secret';
+        document.getElementById('f').requestSubmit(); 1
+        """)
+
+        try await wait("save prompt") { tab.loginPrompt != nil }
+        #expect(tab.loginPrompt == .save(
+            SavedLogin(origin: LoginOrigin.make(from: server.baseURL)!, username: "ada"),
+            password: "secret",
+            isUpdate: false
+        ))
+        #expect(await store.saved.isEmpty, "Nothing is stored before the user accepts")
+
+        await manager.acceptLoginPrompt(on: tab)
+        #expect(tab.loginPrompt == nil)
+        #expect(await store.saved.values.contains("secret"))
+    }
+
+    @Test func unchangedPasswordDoesNotAskAgain() async throws {
+        let server = try await LocalTestServer()
+        let origin = LoginOrigin.make(from: server.baseURL)!
+        let store = InMemoryCredentialStore()
+        try await store.save(SavedLogin(origin: origin, username: "ada"), password: "secret")
+        let manager = makeLoginManager(store: store)
+        let tab = try await loadedTab(manager, server.baseURL.appending(path: "login"))
+        try await wait("fill prompt") { tab.loginPrompt != nil }
+        manager.dismissLoginPrompt(on: tab)
+
+        _ = try await tab.webView.evaluateJavaScript("""
+        document.getElementById('u').value = 'ada';
+        document.getElementById('p').value = 'secret';
+        document.getElementById('f').requestSubmit(); 1
+        """)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(tab.loginPrompt == nil)
+    }
+
+    @Test func savedLoginIsOfferedButFillsOnlyAfterAcceptance() async throws {
+        let server = try await LocalTestServer()
+        let login = SavedLogin(origin: LoginOrigin.make(from: server.baseURL)!, username: "ada")
+        let store = InMemoryCredentialStore()
+        try await store.save(login, password: "secret")
+        let manager = makeLoginManager(store: store)
+        let tab = try await loadedTab(manager, server.baseURL.appending(path: "login"))
+
+        try await wait("fill prompt") { tab.loginPrompt == .fill([login]) }
+        #expect(try await tab.webView.evaluateJavaScript("document.getElementById('p').value") as? String == "")
+
+        await manager.fill(login, on: tab)
+        #expect(try await tab.webView.evaluateJavaScript("document.getElementById('u').value") as? String == "ada")
+        #expect(try await tab.webView.evaluateJavaScript("document.getElementById('p').value") as? String == "secret")
+        #expect(tab.loginPrompt == nil)
+    }
+
+    @Test func pageScriptsCannotReachTheLoginBridge() async throws {
+        let server = try await LocalTestServer()
+        let manager = makeLoginManager(store: InMemoryCredentialStore())
+        let tab = try await loadedTab(manager, server.baseURL.appending(path: "login"))
+
+        let bridge = try await tab.webView.evaluateJavaScript("""
+        typeof (window.webkit && webkit.messageHandlers && webkit.messageHandlers.kaffinLogin)
+        """) as? String
+        #expect(bridge == "undefined")
+    }
+
+    @Test func loginInFrameIsIgnored() async throws {
+        let server = try await LocalTestServer()
+        let store = InMemoryCredentialStore()
+        try await store.save(
+            SavedLogin(origin: LoginOrigin.make(from: server.baseURL)!, username: "ada"),
+            password: "secret"
+        )
+        let manager = makeLoginManager(store: store)
+        let tab = manager.newTab(url: server.baseURL.appending(path: "framed"))
+        try await wait("page loaded") { tab.title == "Framed" && !tab.isLoading }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(tab.loginPrompt == nil)
+    }
+
+    @Test func tabsWithoutCredentialStoreHaveNoBridge() async throws {
+        let server = try await LocalTestServer()
+        let tab = try await loadedTab(manager, server.baseURL.appending(path: "login"))
+        #expect(tab.webView.configuration.userContentController.userScripts.isEmpty)
+    }
+}
+
+actor InMemoryCredentialStore: CredentialStoring {
+    private(set) var saved: [SavedLogin: String] = [:]
+
+    func logins(for origin: String?) -> [SavedLogin] {
+        saved.keys.filter { origin == nil || $0.origin == origin }
+    }
+
+    func password(for login: SavedLogin) -> String? {
+        saved[login]
+    }
+
+    func save(_ login: SavedLogin, password: String) {
+        saved[login] = password
+    }
+
+    func delete(_ login: SavedLogin) {
+        saved[login] = nil
+    }
 }

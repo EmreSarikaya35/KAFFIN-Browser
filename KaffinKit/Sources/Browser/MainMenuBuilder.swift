@@ -15,11 +15,15 @@ enum MainMenuBuilder {
         let setDefault = item("menu.setDefault", #selector(WindowManager.setAsDefaultBrowser(_:)), "")
         setDefault.target = windowManager
 
+        let settings = item("menu.settings", #selector(WindowManager.showSettings(_:)), ",")
+        settings.target = windowManager
+
         let mainMenu = NSMenu()
         for menu in [
             menu("KAFFIN", [
                 item("menu.about", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
                 .separator(),
+                settings,
                 setDefault,
                 .separator(),
                 item("menu.hide", #selector(NSApplication.hide(_:)), "h"),

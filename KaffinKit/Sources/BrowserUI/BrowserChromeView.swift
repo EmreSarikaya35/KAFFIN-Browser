@@ -11,6 +11,7 @@ public struct BrowserChromeView: View {
     let tabManager: TabManager
     let bookmarks: BookmarksModel
     let downloads: DownloadManager
+    let search: SearchSettings
     let isPrivate: Bool
     let focusRequest: Int
     let onSubmit: (String) -> Void
@@ -22,6 +23,7 @@ public struct BrowserChromeView: View {
         tabManager: TabManager,
         bookmarks: BookmarksModel,
         downloads: DownloadManager,
+        search: SearchSettings,
         isPrivate: Bool,
         focusRequest: Int,
         onSubmit: @escaping (String) -> Void
@@ -29,6 +31,7 @@ public struct BrowserChromeView: View {
         self.tabManager = tabManager
         self.bookmarks = bookmarks
         self.downloads = downloads
+        self.search = search
         self.isPrivate = isPrivate
         self.focusRequest = focusRequest
         self.onSubmit = onSubmit
@@ -82,7 +85,7 @@ public struct BrowserChromeView: View {
             SecurityIndicator(security: tab?.isShowingError == true ? .notSecure : AddressDisplay.security(of: tab?.url))
             AddressField(
                 text: AddressDisplay.text(for: tab?.url),
-                placeholder: L10n.string("address.placeholder"),
+                placeholder: String(format: L10n.string("address.placeholder"), search.engine.name),
                 focusRequest: focusRequest,
                 onSubmit: onSubmit
             )
@@ -113,6 +116,8 @@ public struct BrowserChromeView: View {
             menuButton("window.newPrivate", "newPrivateWindow:")
             Divider()
             menuButton("history.show", "showHistory:")
+            menuButton("menu.passwords", "showPasswords:")
+            menuButton("menu.settings", "showSettings:")
             Divider()
             menuButton("zoom.in", "zoomIn:")
             menuButton("zoom.out", "zoomOut:")

@@ -4,10 +4,12 @@ import SwiftUI
 
 /// Native, so a new tab costs no web process and runs no script.
 public struct NewTabView: View {
+    let search: SearchSettings
     let onSubmit: (String) -> Void
     @State private var text = ""
 
-    public init(onSubmit: @escaping (String) -> Void) {
+    public init(search: SearchSettings, onSubmit: @escaping (String) -> Void) {
+        self.search = search
         self.onSubmit = onSubmit
     }
 
@@ -15,7 +17,7 @@ public struct NewTabView: View {
         VStack(spacing: 28) {
             Text(verbatim: "KAFFIN")
                 .font(.system(size: 44, weight: .semibold))
-            TextField(L10n.string("address.placeholder"), text: $text)
+            TextField(String(format: L10n.string("address.placeholder"), search.engine.name), text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .padding(.horizontal, 18)

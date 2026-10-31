@@ -44,7 +44,15 @@ final class LocalTestServer: @unchecked Sendable {
                 })
             }
         default:
-            let html = "<!doctype html><title>Test Page</title><p>ok"
+            let html = switch path {
+            case "/login":
+                "<!doctype html><title>Login</title><form id=f action=/page onsubmit='return false'>"
+                    + "<input id=u type=text name=user><input id=p type=password name=pass></form>"
+            case "/framed":
+                "<!doctype html><title>Framed</title><iframe src=/login></iframe>"
+            default:
+                "<!doctype html><title>Test Page</title><p>ok"
+            }
             let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n"
                 + "Content-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
             connection.send(content: Data(response.utf8), isComplete: true, completion: .contentProcessed { _ in

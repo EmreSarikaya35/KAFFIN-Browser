@@ -15,6 +15,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let profileMenu: ProfileMenu?
     private let webContainer = NSView()
     private var newTabHost: NSHostingView<NewTabView>!
+    private var pageHosts: [InternalPage: NSView] = [:]
+    private var extensionsRequest = 0
     private var findHost: NSHostingView<FindBarView>!
     private var loginHost: NSHostingView<LoginPromptView>!
     private var suggestionHost: NSHostingView<SuggestionListView>!
@@ -31,6 +33,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     var onNewWindow: (() -> Void)?
     var onNewPrivateWindow: (() -> Void)?
     var onShowHistory: (() -> Void)?
+    var onInternalPageShown: ((InternalPage) -> Void)?
+    /// Stays nil in private windows, whose settings live in a normal window.
+    var makeInternalPage: ((InternalPage) -> AnyView)? {
+        didSet { updateInternalPage() }
+    }
     var onShowSettings: ((SettingsPane) -> Void)?
     var onMoveTabToNewWindow: ((Tabs.Tab, BrowserWindowController) -> Void)?
     private var chromeHeight: NSLayoutConstraint!
@@ -131,7 +138,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func open(_ url: URL) {
-        tabManager.newTab(url: url)
+        if let page = InternalPage(url: url) {
+            tabManager.showInternalPage(page)
+        } else {
+            tabManager.newTab(url: url)
+        }
     }
 
     @available(*, unavailable)
@@ -233,7 +244,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             suggestions: suggestions,
             profileMenu: profileMenu,
             isPrivate: isPrivate,
-            focusRequest: focusRequest
+            focusRequest: focusRequest,
+            extensionsRequest: extensionsRequest
         ) { [weak self] in
             self?.submitAddress($0)
         }
@@ -248,7 +260,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         if tab.url == nil {
             focusAddressBar()
         } else {
-            window?.makeFirstResponder(tab.webView)
+            window?.makeFirstResponder(tab.internalPage == nil ? tab.webView : nil)
         }
     }
 
@@ -260,6 +272,30 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             Task { @MainActor in self?.updateNewTabPage() }
         }
         newTabHost.isHidden = !isBlank
+    }
+
+    private func updateInternalPage() {
+        let page = withObservationTracking {
+            tabManager.selectedTab?.internalPage
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.updateInternalPage() }
+        }
+        pageHosts.values.forEach { $0.isHidden = true }
+        guard let page, let makeInternalPage, let content = window?.contentView else { return }
+        let host = pageHosts[page] ?? NSHostingView(rootView: makeInternalPage(page))
+        if pageHosts[page] == nil {
+            pageHosts[page] = host
+            host.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(host, positioned: .above, relativeTo: newTabHost)
+            NSLayoutConstraint.activate([
+                host.topAnchor.constraint(equalTo: webContainer.topAnchor),
+                host.leadingAnchor.constraint(equalTo: webContainer.leadingAnchor),
+                host.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor),
+                host.bottomAnchor.constraint(equalTo: webContainer.bottomAnchor),
+            ])
+        }
+        host.isHidden = false
+        onInternalPageShown?(page)
     }
 
     private func updateStoreOffer() {
@@ -313,8 +349,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         suggestions.clear()
         guard let url = AddressResolver.resolve(text, searchEngine: search.engine),
               let tab = tabManager.selectedTab else { return }
+        if let page = InternalPage(url: url), isPrivate {
+            page == .settings ? onShowSettings?(.general) : onShowHistory?()
+            return
+        }
         tab.load(url)
-        window?.makeFirstResponder(tab.webView)
+        window?.makeFirstResponder(tab.internalPage == nil ? tab.webView : nil)
     }
 
     private func focusAddressBar() {
@@ -361,7 +401,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func showExtensions(_ sender: Any?) {
-        onShowSettings?(.extensions)
+        extensionsRequest += 1
+        chromeHost.rootView = makeChromeView()
     }
 
     @objc func showPasswords(_ sender: Any?) {

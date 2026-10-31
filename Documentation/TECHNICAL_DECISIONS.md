@@ -111,3 +111,7 @@ Swift Testing needs the full Xcode toolchain because Command Line Tools lack its
 ## Page Location
 
 `WKWebView` on macOS calls the geolocation permission delegate but provides no location. KAFFIN replaces `Geolocation.prototype` in the main frame and answers from `CLLocationManager`. The page script talks to an isolated world through window events, because a page-world message handler would expose `window.webkit`.
+
+## Internal Pages
+
+Settings and History are `kaffin://` pages drawn by SwiftUI over a tab, not separate windows. `Tab.load` is the single entry point, so reopening, duplicating, and restoring such a tab reuse the normal paths. Websites cannot reach them, because `LinkPolicy` blocks the scheme. Extensions are managed in a toolbar popover.

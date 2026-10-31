@@ -127,6 +127,15 @@ public final class WindowManager: NSObject {
                 self?.openWindow(in: session, adopting: tab)
             }
         }
+        controller.onInternalPageShown = { [weak session] page in
+            if page == .history, let session { Task { await session.history.reload() } }
+        }
+        if !controller.isPrivate {
+            controller.makeInternalPage = { [weak self, weak session] page in
+                guard let self, let session else { return AnyView(EmptyView()) }
+                return self.makeInternalPage(page, of: session)
+            }
+        }
         controllers.append(controller)
         controller.showWindow(nil)
     }
@@ -221,8 +230,6 @@ public final class WindowManager: NSObject {
         let session = sessions.removeValue(forKey: id)
         session?.saveTask?.cancel()
         controllers.filter { $0.profileID == id }.forEach { $0.close() }
-        session?.historyWindow?.close()
-        session?.settingsWindow?.close()
         _ = profiles.remove(id)
         if controllers.isEmpty { openWindow() }
 
@@ -239,49 +246,31 @@ public final class WindowManager: NSObject {
 
     private func presentSettings(_ pane: SettingsPane, of session: ProfileSession) {
         session.settingsNavigation.pane = pane
-        if let window = session.settingsWindow {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let view = SettingsView(
-            navigation: session.settingsNavigation,
-            search: search,
-            accent: accent,
-            performance: performance,
-            extensions: session.extensions.model,
-            sitePermissions: session.sitePermissions,
-            passwords: session.passwords
-        ) { [weak self] in
-            self?.setAsDefaultBrowser(nil)
-        }
-        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-        window.title = windowTitle(L10n.string("settings.title"), of: session)
-        window.isReleasedWhenClosed = false
-        session.settingsWindow = window
-        window.makeKeyAndOrderFront(nil)
+        open(InternalPage.settings.url, in: session)
     }
 
     private func presentHistory(of session: ProfileSession) {
-        Task { await session.history.reload() }
-        if let window = session.historyWindow {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let view = HistoryView(model: session.history) { [weak self, weak session] url in
-            if let session { self?.open(url, in: session) }
-        }
-        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-        window.title = windowTitle(L10n.string("history.title"), of: session)
-        window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 640, height: 520))
-        session.historyWindow = window
-        window.makeKeyAndOrderFront(nil)
+        open(InternalPage.history.url, in: session)
     }
 
-    /// Names the profile, so history and passwords are never mistaken for another profile's.
-    private func windowTitle(_ title: String, of session: ProfileSession) -> String {
-        let name = profiles.profiles.first { $0.id == session.id }?.name ?? ""
-        return profiles.profiles.count > 1 ? "\(title) – \(name)" : title
+    private func makeInternalPage(_ page: InternalPage, of session: ProfileSession) -> AnyView {
+        switch page {
+        case .settings:
+            AnyView(SettingsView(
+                navigation: session.settingsNavigation,
+                search: search,
+                accent: accent,
+                performance: performance,
+                sitePermissions: session.sitePermissions,
+                passwords: session.passwords
+            ) { [weak self] in
+                self?.setAsDefaultBrowser(nil)
+            })
+        case .history:
+            AnyView(HistoryView(model: session.history) { [weak self, weak session] url in
+                if let session { self?.open(url, in: session) }
+            })
+        }
     }
 
     /// A link that launches the app arrives before the session loads, so it waits to join the restored windows.

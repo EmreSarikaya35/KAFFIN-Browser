@@ -44,9 +44,11 @@ public struct BrowserChromeView: View {
     let profileMenu: ProfileMenu?
     let isPrivate: Bool
     let focusRequest: Int
+    let extensionsRequest: Int
     let onSubmit: (String) -> Void
 
     @State private var isShowingDownloads = false
+    @State private var isShowingExtensions = false
     @Environment(\.controlActiveState) private var activeState
 
     public init(
@@ -60,6 +62,7 @@ public struct BrowserChromeView: View {
         profileMenu: ProfileMenu?,
         isPrivate: Bool,
         focusRequest: Int,
+        extensionsRequest: Int,
         onSubmit: @escaping (String) -> Void
     ) {
         self.tabManager = tabManager
@@ -72,6 +75,7 @@ public struct BrowserChromeView: View {
         self.profileMenu = profileMenu
         self.isPrivate = isPrivate
         self.focusRequest = focusRequest
+        self.extensionsRequest = extensionsRequest
         self.onSubmit = onSubmit
     }
 
@@ -114,7 +118,13 @@ public struct BrowserChromeView: View {
             }
             if let extensions {
                 ForEach(extensions.entries.filter { $0.isEnabled && $0.isPinned }) { extensionButton($0, extensions) }
-                extensionsMenu(extensions)
+                toolbarButton("puzzlepiece.extension", key: "extensions.title", enabled: true) {
+                    isShowingExtensions.toggle()
+                }
+                .popover(isPresented: $isShowingExtensions, arrowEdge: .bottom) {
+                    ExtensionsPanelView(model: extensions) { isShowingExtensions = false }
+                }
+                .onChange(of: extensionsRequest) { isShowingExtensions = true }
             }
             if let profileMenu { ProfileButton(menu: profileMenu) }
             mainMenu
@@ -197,30 +207,6 @@ public struct BrowserChromeView: View {
         .accessibilityLabel(entry.badge.isEmpty ? entry.name : "\(entry.name), \(entry.badge)")
     }
 
-    private func extensionsMenu(_ model: ExtensionsModel) -> some View {
-        Menu {
-            ForEach(model.entries.filter(\.isEnabled)) { entry in
-                Button {
-                    model.commands?.performAction(entry.id)
-                } label: {
-                    if let icon = entry.icon {
-                        Label { Text(entry.name) } icon: { Image(nsImage: icon) }
-                    } else {
-                        Text(entry.name)
-                    }
-                }
-            }
-            if !model.entries.isEmpty { Divider() }
-            menuButton("extensions.manage", "showExtensions:")
-        } label: {
-            Image(systemName: "puzzlepiece.extension")
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel(L10n.string("extensions.title"))
-    }
-
     private var mainMenu: some View {
         Menu {
             menuButton("tab.new", "newTab:")
@@ -229,7 +215,7 @@ public struct BrowserChromeView: View {
             Divider()
             menuButton("history.show", "showHistory:")
             menuButton("menu.passwords", "showPasswords:")
-            menuButton("extensions.title", "showExtensions:")
+            if extensions != nil { menuButton("extensions.title", "showExtensions:") }
             menuButton("menu.settings", "showSettings:")
             Divider()
             menuButton("zoom.in", "zoomIn:")
@@ -342,7 +328,7 @@ private struct TabStripView: View {
     @State private var drag: TabDrag?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var animation: Animation? { reduceMotion ? nil : .easeOut(duration: 0.12) }
+    private var animation: Animation? { reduceMotion ? nil : .easeOut(duration: 0.16) }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
@@ -356,6 +342,10 @@ private struct TabStripView: View {
                     onDragChanged: { updateDrag(of: tab, translation: $0, tabWidth: $1) },
                     onDragEnded: { withAnimation(animation) { drag = nil } }
                 )
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.7, anchor: .bottom).combined(with: .opacity),
+                    removal: .opacity
+                ))
             }
             Button {
                 tabManager.newTab()
@@ -374,6 +364,8 @@ private struct TabStripView: View {
                     .padding(.bottom, 10)
             }
         }
+        // Tabs open and close from many places, so the strip reacts to the list itself.
+        .animation(animation, value: tabManager.tabs.map(\.id))
         // Leaves room for the traffic-light buttons.
         .padding(.leading, 80)
         .frame(height: 40)
@@ -422,6 +414,7 @@ private struct TabItemView: View {
     let onDragEnded: () -> Void
 
     @State private var width: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isSelected: Bool { tab.id == tabManager.selectedTabID }
     private var title: String { tab.title ?? tab.url?.host() ?? L10n.string("tab.new") }
@@ -440,6 +433,8 @@ private struct TabItemView: View {
         HStack(spacing: 8) {
             if tab.state == .sleeping {
                 Image(systemName: "moon.zzz").font(.system(size: 12)).foregroundStyle(.secondary)
+            } else if let page = tab.internalPage {
+                Image(systemName: page == .settings ? "gearshape" : "clock").font(.system(size: 12)).foregroundStyle(.secondary)
             } else if tab.isLoading {
                 ProgressView().controlSize(.mini)
             } else if let image = tab.favicon.flatMap(NSImage.init(data:)) {
@@ -499,6 +494,7 @@ private struct TabItemView: View {
                 accent.frame(height: 2).padding(.horizontal, 8)
             }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: isSelected)
         .contentShape(Rectangle())
         .onTapGesture { tabManager.select(tab.id) }
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)

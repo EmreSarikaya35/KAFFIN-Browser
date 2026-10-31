@@ -18,6 +18,13 @@ public struct HistoryView: View {
     }
 
     public var body: some View {
+        content
+            .frame(maxWidth: 860)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 TextField(L10n.string("history.search"), text: $model.query)

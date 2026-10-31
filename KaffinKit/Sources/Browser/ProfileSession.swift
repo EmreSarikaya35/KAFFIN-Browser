@@ -25,8 +25,6 @@ final class ProfileSession {
     private var isPrepared = false
     let downloads: DownloadManager
     let settingsNavigation = SettingsNavigation()
-    var historyWindow: NSWindow?
-    var settingsWindow: NSWindow?
     var saveTask: Task<Void, Never>?
 
     init(id: UUID) {

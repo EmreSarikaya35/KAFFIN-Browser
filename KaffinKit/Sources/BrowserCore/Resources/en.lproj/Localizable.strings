@@ -40,7 +40,6 @@
 "extensions.checkUpdates" = "Check for updates from the Chrome Web Store";
 "extensions.showInToolbar" = "Show in toolbar";
 "extensions.addToKaffin" = "Add to KAFFIN";
-"extensions.manage" = "Manage Extensions";
 "extensions.empty" = "Extensions you add appear here.";
 "extensions.storeField" = "Chrome Web Store address or extension ID";
 "extensions.storeInstall" = "Install";

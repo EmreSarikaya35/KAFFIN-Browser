@@ -7,7 +7,7 @@ public enum LinkPolicy {
     }
 
     private static let webSchemes: Set<String> = ["http", "https", "about", "blob"]
-    private static let blockedSchemes: Set<String> = ["file", "javascript", "vbscript"]
+    private static let blockedSchemes: Set<String> = [InternalPage.scheme, "file", "javascript", "vbscript"]
 
     public static func decision(scheme: String, isMainFrame: Bool, isLinkClick: Bool) -> Decision {
         let scheme = scheme.lowercased()

@@ -24,6 +24,8 @@ public final class Tab: Identifiable {
     public internal(set) var isCapturing = false
     public internal(set) var isPinned = false
     public internal(set) var isMuted = false
+    /// Covers the web view while set; `url` and `title` then describe this page.
+    public private(set) var internalPage: InternalPage?
     @ObservationIgnored var faviconHost: String?
     /// When the user last left this tab, for idle sleeping.
     @ObservationIgnored var lastActiveAt = Date.now
@@ -41,9 +43,11 @@ public final class Tab: Identifiable {
     init(webView: WKWebView, state: TabLifecycleState, restoring session: SessionTab? = nil) {
         self.webView = webView
         self.state = state
-        pending = session
+        // An internal page needs no loading, so it shows its icon even before it is selected.
+        internalPage = session.flatMap { InternalPage(url: $0.url) }
+        pending = internalPage == nil ? session : nil
         isPinned = session?.isPinned ?? false
-        title = session?.title
+        title = internalPage?.title ?? session?.title
         url = session?.url
         observeWebView()
     }
@@ -52,13 +56,15 @@ public final class Tab: Identifiable {
         observations = [
             observe(\.title) { tab, webView in
                 // A restored tab keeps its saved title until its page starts loading.
-                guard !tab.isAwaitingLoad else { return }
+                guard !tab.isAwaitingLoad, tab.internalPage == nil else { return }
                 tab.title = webView.title.flatMap { $0.isEmpty ? nil : $0 }
                 tab.onPropertiesChange?()
                 if !tab.isShowingError, let url = webView.url, let title = tab.title { tab.onTitleChange?(url, title) }
             },
             observe(\.url) { tab, webView in
-                if !tab.isAwaitingLoad { tab.url = webView.url }
+                // Going back from an internal page returns to the page underneath it.
+                if tab.internalPage != nil, webView.url != nil { tab.internalPage = nil }
+                if !tab.isAwaitingLoad, tab.internalPage == nil { tab.url = webView.url }
                 tab.onPropertiesChange?()
             },
             observe(\.isLoading) { tab, webView in
@@ -94,7 +100,24 @@ public final class Tab: Identifiable {
 
     public func load(_ url: URL) {
         pending = nil
+        if let page = InternalPage(url: url) {
+            show(page)
+            return
+        }
+        if internalPage != nil {
+            internalPage = nil
+            self.url = url
+            title = nil
+        }
         webView.load(URLRequest(url: url))
+    }
+
+    private func show(_ page: InternalPage) {
+        webView.stopLoading()
+        internalPage = page
+        url = page.url
+        title = page.title
+        onPropertiesChange?()
     }
 
     func startPendingLoad() {

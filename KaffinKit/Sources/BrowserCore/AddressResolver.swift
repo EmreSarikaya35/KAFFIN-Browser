@@ -22,7 +22,7 @@ public struct SearchEngine: Sendable, Equatable {
 /// Turns address bar input into a URL to load.
 public enum AddressResolver {
     // javascript: and data: are left out on purpose, so pasted input cannot run script in the current page.
-    private static let allowedSchemes: Set<String> = ["http", "https", "about"]
+    private static let allowedSchemes: Set<String> = ["http", "https", "about", InternalPage.scheme]
 
     public static func resolve(_ input: String, searchEngine: SearchEngine = .google) -> URL? {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)

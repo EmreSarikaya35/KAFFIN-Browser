@@ -70,6 +70,17 @@ public final class TabManager {
         return tab
     }
 
+    /// Keeps one tab per page, and uses an empty tab instead of adding another, like Chrome.
+    public func showInternalPage(_ page: InternalPage) {
+        if let open = tabs.first(where: { $0.internalPage == page }) {
+            select(open.id)
+        } else if let tab = selectedTab, tab.url == nil {
+            tab.load(page.url)
+        } else {
+            newTab(url: page.url)
+        }
+    }
+
     /// Opens a tab with WebKit's configuration, for `window.open` and `target=_blank`.
     func addPopupTab(configuration: WKWebViewConfiguration) -> Tab {
         let tab = addTab(configuration: configuration)
@@ -251,7 +262,7 @@ public final class TabManager {
     @discardableResult
     public func sleep(_ id: Tab.ID) -> Bool {
         guard id != selectedTabID, let tab = tabs.first(where: { $0.id == id }),
-              tab.state == .background, tab.url != nil else { return false }
+              tab.state == .background, tab.url != nil, tab.internalPage == nil else { return false }
         if tab.isAwaitingLoad {
             tab.transition(to: .sleeping)
         } else {
@@ -265,7 +276,7 @@ public final class TabManager {
     public func sleepEligibleTabs(_ settings: PerformanceSettings, trigger: SleepTrigger, now: Date = .now) async {
         let isAllowed = trigger == .idle ? settings.sleepsIdleTabs : settings.sleepsUnderMemoryPressure
         guard isAllowed else { return }
-        for tab in tabs where tab.id != selectedTabID && tab.state == .background && !tab.isAwaitingLoad {
+        for tab in tabs where tab.id != selectedTabID && tab.state == .background && !tab.isAwaitingLoad && tab.internalPage == nil {
             let webView = tab.webView
             let media = await webView.requestMediaPlaybackState()
             let candidate = SleepCandidate(

@@ -948,6 +948,96 @@ struct WebKitIntegrationTests {
         #expect(tab.loginPrompt == nil)
     }
 
+    @Test func internalPageOpensInATabWithoutTouchingTheWeb() {
+        let tab = manager.newTab(url: InternalPage.settings.url)
+
+        #expect(tab.internalPage == .settings)
+        #expect(tab.url == InternalPage.settings.url)
+        #expect(tab.title == InternalPage.settings.title)
+        #expect(tab.webView.url == nil)
+    }
+
+    @Test func internalPageReusesItsTabAndAnEmptyTab() {
+        let empty = manager.newTab()
+        manager.showInternalPage(.history)
+        #expect(manager.tabs.count == 1)
+        #expect(empty.internalPage == .history)
+
+        let other = manager.newTab(url: InternalPage.settings.url)
+        manager.showInternalPage(.history)
+        #expect(manager.tabs.count == 2)
+        #expect(manager.selectedTabID == empty.id)
+
+        manager.showInternalPage(.settings)
+        #expect(manager.tabs.count == 2)
+        #expect(manager.selectedTabID == other.id)
+    }
+
+    @Test func webPageReplacesAnInternalPage() async throws {
+        let server = try await LocalTestServer()
+        let page = server.baseURL.appending(path: "page")
+        let tab = manager.newTab(url: InternalPage.settings.url)
+
+        tab.load(page)
+        #expect(tab.internalPage == nil)
+        #expect(tab.url == page)
+        try await wait("web title") { tab.title == "Test Page" }
+    }
+
+    @Test func goingBackLeavesAnInternalPage() async throws {
+        let server = try await LocalTestServer()
+        let first = server.baseURL.appending(path: "page")
+        var visits = 0
+        manager.onPageVisit = { _, _ in visits += 1 }
+        let tab = manager.newTab(url: first)
+        try await wait("first page") { visits == 1 }
+        tab.load(server.baseURL.appending(path: "login"))
+        try await wait("second page") { visits == 2 }
+        tab.load(InternalPage.history.url)
+        #expect(tab.internalPage == .history)
+
+        tab.webView.goBack()
+        try await wait("back on the web") { tab.internalPage == nil && tab.url == first }
+    }
+
+    @Test func internalPageSurvivesARestart() {
+        manager.newTab(url: InternalPage.settings.url)
+        let saved = manager.snapshot()
+
+        let restored = TabManager(factory: .privateSession())
+        restored.restore(saved)
+
+        #expect(restored.selectedTab?.internalPage == .settings)
+    }
+
+    @Test func restoredBackgroundInternalPageKeepsItsIdentity() {
+        manager.newTab(url: InternalPage.settings.url)
+        manager.newTab(url: InternalPage.history.url)
+        let saved = manager.snapshot()
+
+        let restored = TabManager(factory: .privateSession())
+        restored.restore(saved)
+
+        #expect(restored.tabs.map(\.internalPage) == [.settings, .history])
+        #expect(restored.tabs[0].url == InternalPage.settings.url)
+    }
+
+    @Test func closedInternalPageCanBeReopened() throws {
+        let tab = manager.newTab(url: InternalPage.history.url)
+        manager.newTab()
+        manager.close(tab.id)
+
+        #expect(manager.reopenClosedTab()?.internalPage == .history)
+    }
+
+    @Test func internalPageNeverSleeps() {
+        let tab = manager.newTab(url: InternalPage.settings.url)
+        manager.newTab()
+
+        #expect(!manager.sleep(tab.id))
+        #expect(tab.state != .sleeping)
+    }
+
     @Test func tabsWithoutCredentialStoreHaveNoBridge() async throws {
         let server = try await LocalTestServer()
         let tab = try await loadedTab(manager, server.baseURL.appending(path: "login"))

@@ -19,34 +19,11 @@ public struct BrowserChromeView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            tabStrip
+            TabStripView(tabManager: tabManager)
             toolbar
             Divider()
         }
         .frame(height: Self.height)
-    }
-
-    private var tabStrip: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            ForEach(tabManager.tabs) { tab in
-                TabItemView(tab: tab, tabManager: tabManager)
-            }
-            Button {
-                tabManager.newTab()
-            } label: {
-                Image(systemName: "plus").frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(L10n.string("tab.new"))
-            .padding(.leading, 4)
-            .padding(.bottom, 3)
-            Spacer(minLength: 40)
-        }
-        // Leaves room for the traffic-light buttons.
-        .padding(.leading, 80)
-        .frame(height: 40)
-        .background(ChromePalette.strip)
-        .gesture(WindowDragGesture())
     }
 
     private var toolbar: some View {
@@ -147,9 +124,91 @@ private struct SecurityIndicator: View {
     }
 }
 
+private struct TabDrag {
+    let id: Tabs.Tab.ID
+    let startIndex: Int
+    var translation: CGFloat
+    var tabWidth: CGFloat
+}
+
+private struct TabStripView: View {
+    let tabManager: TabManager
+
+    @State private var drag: TabDrag?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var animation: Animation? { reduceMotion ? nil : .easeOut(duration: 0.12) }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            ForEach(Array(tabManager.tabs.enumerated()), id: \.element.id) { index, tab in
+                TabItemView(
+                    tab: tab,
+                    tabManager: tabManager,
+                    dragOffset: dragOffset(of: tab, at: index),
+                    isDragging: drag?.id == tab.id,
+                    onDragChanged: { updateDrag(of: tab, translation: $0, tabWidth: $1) },
+                    onDragEnded: { withAnimation(animation) { drag = nil } }
+                )
+            }
+            Button {
+                tabManager.newTab()
+            } label: {
+                Image(systemName: "plus").frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(L10n.string("tab.new"))
+            .padding(.leading, 4)
+            .padding(.bottom, 3)
+            Spacer(minLength: 40)
+        }
+        // Leaves room for the traffic-light buttons.
+        .padding(.leading, 80)
+        .frame(height: 40)
+        .background(ChromePalette.strip)
+        .gesture(WindowDragGesture())
+    }
+
+    private func dragOffset(of tab: Tabs.Tab, at index: Int) -> CGFloat {
+        guard let drag, drag.id == tab.id else { return 0 }
+        return TabDragLayout.offset(
+            start: drag.startIndex,
+            current: index,
+            count: tabManager.tabs.count,
+            translation: drag.translation,
+            tabWidth: drag.tabWidth
+        )
+    }
+
+    private func updateDrag(of tab: Tabs.Tab, translation: CGFloat, tabWidth: CGFloat) {
+        guard let current = tabManager.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        if drag?.id != tab.id {
+            tabManager.select(tab.id)
+            drag = TabDrag(id: tab.id, startIndex: current, translation: 0, tabWidth: tabWidth)
+        }
+        drag?.translation = translation
+        guard let drag else { return }
+        let target = TabDragLayout.targetIndex(
+            start: drag.startIndex,
+            count: tabManager.tabs.count,
+            translation: translation,
+            tabWidth: drag.tabWidth
+        )
+        if target != current {
+            withAnimation(animation) { tabManager.move(tab.id, to: target) }
+        }
+    }
+}
+
 private struct TabItemView: View {
     let tab: Tabs.Tab
     let tabManager: TabManager
+    let dragOffset: CGFloat
+    let isDragging: Bool
+    let onDragChanged: (CGFloat, CGFloat) -> Void
+    let onDragEnded: () -> Void
+
+    @State private var width: CGFloat = 0
 
     private var isSelected: Bool { tab.id == tabManager.selectedTabID }
 
@@ -182,12 +241,17 @@ private struct TabItemView: View {
         .contentShape(Rectangle())
         .onTapGesture { tabManager.select(tab.id) }
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .draggable(tab.id.uuidString)
-        .dropDestination(for: String.self) { items, _ in
-            guard let id = items.first.flatMap(UUID.init(uuidString:)) else { return false }
-            tabManager.move(id, before: tab.id)
-            return true
-        }
+        .onGeometryChange(for: CGFloat.self, of: \.size.width) { width = $0 }
+        .offset(x: dragOffset)
+        .zIndex(isDragging ? 1 : 0)
+        // The dragged tab follows the pointer exactly; only its neighbors animate.
+        .transaction { if isDragging { $0.animation = nil } }
+        // Global space, because the tab itself moves under the pointer during the drag.
+        .gesture(
+            DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                .onChanged { onDragChanged($0.translation.width, width) }
+                .onEnded { _ in onDragEnded() }
+        )
         .contextMenu {
             Button(L10n.string("tab.new")) { tabManager.newTab() }
             Button(L10n.string("tab.reload")) { tab.webView.reload() }

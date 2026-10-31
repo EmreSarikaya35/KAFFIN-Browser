@@ -20,7 +20,9 @@ Measured with a throwaway unbundled, unsandboxed program. Results must be repeat
 | Geolocation, PiP, EME, WebAuthn | The JavaScript APIs exist. Actual behavior is untested                                     |
 | Media playback state        | Inconclusive: `requestMediaPlaybackState` returned 1 both before and after `play()`             |
 
-Still open, and each needs manual use of the app: Google and Microsoft sign-in, DRM streaming, tab mute, password manager and ad blocker extensions.
+Confirmed by the project owner in the app: Google account sign-in works, and Amazon Prime Video plays series.
+
+Still open: Microsoft sign-in, tab mute, password manager and ad blocker extensions.
 
 ## Signing
 

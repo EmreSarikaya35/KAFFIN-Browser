@@ -104,11 +104,10 @@ public final class TabManager {
         newTab(url: url)
     }
 
-    public func move(_ id: Tab.ID, before targetID: Tab.ID) {
-        guard id != targetID, let from = tabs.firstIndex(where: { $0.id == id }) else { return }
-        guard tabs.contains(where: { $0.id == targetID }) else { return }
+    public func move(_ id: Tab.ID, to index: Int) {
+        guard let from = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: from)
-        tabs.insert(tab, at: tabs.firstIndex { $0.id == targetID }!)
+        tabs.insert(tab, at: min(index, tabs.count))
     }
 
     public func selectTab(at index: Int) {

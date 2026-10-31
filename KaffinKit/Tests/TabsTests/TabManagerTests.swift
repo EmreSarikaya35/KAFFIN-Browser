@@ -83,24 +83,28 @@ struct TabManagerTests {
         #expect(background.state == .active)
     }
 
-    @Test func movesTabToNewPosition() {
+    @Test func movesTabLeftAndRight() {
         let manager = makeManager()
         let first = manager.newTab()
         let second = manager.newTab()
         let third = manager.newTab()
 
-        manager.move(third.id, before: first.id)
-        #expect(manager.tabs.map(\.id) == [third.id, first.id, second.id])
+        manager.move(first.id, to: 2)
+        #expect(manager.tabs.map(\.id) == [second.id, third.id, first.id])
+        manager.move(first.id, to: 0)
+        #expect(manager.tabs.map(\.id) == [first.id, second.id, third.id])
         #expect(manager.selectedTabID == third.id)
     }
 
-    @Test func movingUnknownTabChangesNothing() {
+    @Test func moveIgnoresUnknownTabAndClampsIndex() {
         let manager = makeManager()
         let first = manager.newTab()
         let second = manager.newTab()
 
-        manager.move(UUID(), before: first.id)
+        manager.move(UUID(), to: 0)
         #expect(manager.tabs.map(\.id) == [first.id, second.id])
+        manager.move(first.id, to: 99)
+        #expect(manager.tabs.map(\.id) == [second.id, first.id])
     }
 
     @Test func closeOthersKeepsOnlyGivenTab() {

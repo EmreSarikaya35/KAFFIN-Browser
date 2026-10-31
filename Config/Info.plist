@@ -39,5 +39,7 @@
 	<string>Websites you allow can use your microphone.</string>
 	<key>NSLocationUsageDescription</key>
 	<string>Websites you allow can use your location.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Websites you allow can use your location.</string>
 </dict>
 </plist>

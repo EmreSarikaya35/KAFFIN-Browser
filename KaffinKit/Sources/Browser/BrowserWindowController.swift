@@ -46,6 +46,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         credentials: (any CredentialStoring)?,
         favicons: FaviconLoader?,
         sitePermissions: (any SitePermissionStoring)?,
+        locationAccess: SystemLocationAccess,
         suggestions: SuggestionsModel,
         profileID: UUID,
         profileMenu: ProfileMenu?,
@@ -88,7 +89,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
 
         window.delegate = self
-        let pageDialogs = SheetPageDialogs(window: window)
+        let pageDialogs = SheetPageDialogs(window: window, locationAccess: locationAccess)
         self.pageDialogs = pageDialogs
         tabManager.dialogs = pageDialogs
         installContent(in: window)

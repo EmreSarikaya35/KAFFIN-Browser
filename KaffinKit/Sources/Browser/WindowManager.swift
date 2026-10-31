@@ -16,6 +16,7 @@ public final class WindowManager: NSObject {
     private let profiles = ProfileList()
     private let search = SearchSettings()
     private let accent = AccentSettings()
+    private let locationAccess = SystemLocationAccess()
     private let performance = PerformanceSettings()
     private lazy var sleepScheduler = TabSleepScheduler(settings: performance) { [weak self] trigger in
         guard let self else { return }
@@ -80,6 +81,7 @@ public final class WindowManager: NSObject {
             credentials: session.credentials,
             favicons: session.favicons,
             sitePermissions: session.database,
+            locationAccess: locationAccess,
             suggestions: session.makeSuggestions(includingHistory: true),
             profileID: session.id,
             profileMenu: makeProfileMenu(current: session.id),
@@ -161,6 +163,7 @@ public final class WindowManager: NSObject {
             credentials: nil,
             favicons: nil,
             sitePermissions: nil,
+            locationAccess: locationAccess,
             suggestions: session.makeSuggestions(includingHistory: false),
             profileID: session.id,
             profileMenu: nil,

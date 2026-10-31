@@ -10,4 +10,5 @@ public protocol PageDialogPresenting: AnyObject {
     func credential(for site: String, realm: String?) async -> URLCredential?
     func confirmOpening(_ url: URL, from site: String) async -> Bool
     func askPermission(_ kind: SitePermissionKind, for site: String) async -> PermissionAnswer
+    func ensureSystemLocationAccess() async -> Bool
 }

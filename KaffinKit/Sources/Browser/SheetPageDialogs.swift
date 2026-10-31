@@ -7,9 +7,11 @@ import Tabs
 @MainActor
 final class SheetPageDialogs: PageDialogPresenting {
     private weak var window: NSWindow?
+    private let locationAccess: SystemLocationAccess
 
-    init(window: NSWindow?) {
+    init(window: NSWindow?, locationAccess: SystemLocationAccess) {
         self.window = window
+        self.locationAccess = locationAccess
     }
 
     private func present(_ alert: NSAlert) async -> NSApplication.ModalResponse {
@@ -83,6 +85,22 @@ final class SheetPageDialogs: PageDialogPresenting {
         case .alertSecondButtonReturn: return .block
         default: return .notNow
         }
+    }
+
+    /// Without this message a refused app-wide setting would look like a broken website.
+    func ensureSystemLocationAccess() async -> Bool {
+        if await locationAccess.requestAccess() { return true }
+        let alert = makeAlert(
+            L10n.string("permission.locationOff"),
+            detail: L10n.string("permission.locationOffDetail"),
+            primary: L10n.string("permission.openSettings")
+        )
+        alert.addButton(withTitle: L10n.string("dialog.cancel"))
+        if await present(alert) == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
+            NSWorkspace.shared.open(url)
+        }
+        return false
     }
 
     func confirmOpening(_ url: URL, from site: String) async -> Bool {

@@ -553,6 +553,13 @@ struct WebKitIntegrationTests {
 
         var permissionAnswer: PermissionAnswer = .notNow
         var permissionRequests = 0
+        var systemLocationAllowed = true
+        var systemLocationChecks = 0
+
+        func ensureSystemLocationAccess() async -> Bool {
+            systemLocationChecks += 1
+            return systemLocationAllowed
+        }
 
         func askPermission(_ kind: SitePermissionKind, for site: String) async -> PermissionAnswer {
             permissionRequests += 1
@@ -600,6 +607,43 @@ struct WebKitIntegrationTests {
         #expect(await !manager.decidePermission(.microphone, site: "https://x.example"))
         #expect(await !manager.decidePermission(.microphone, site: "https://x.example"))
         #expect(dialogs.permissionRequests == 1)
+    }
+
+    @Test func locationNeedsTheSystemToAgreeToo() async {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .allow
+        dialogs.systemLocationAllowed = false
+        let store = MemoryPermissions()
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), sitePermissions: store)
+        manager.dialogs = dialogs
+
+        #expect(await !manager.decidePermission(.location, site: "https://maps.example"))
+        #expect(dialogs.systemLocationChecks == 1)
+        #expect(await store.saved["location|https://maps.example"] == true, "The site choice stays for when macOS allows it")
+
+        dialogs.systemLocationAllowed = true
+        #expect(await manager.decidePermission(.location, site: "https://maps.example"))
+        #expect(dialogs.permissionRequests == 1)
+    }
+
+    @Test func refusedSiteNeverTriggersTheSystemQuestion() async {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .block
+        let manager = TabManager(factory: .privateSession())
+        manager.dialogs = dialogs
+
+        #expect(await !manager.decidePermission(.location, site: "https://maps.example"))
+        #expect(dialogs.systemLocationChecks == 0)
+    }
+
+    @Test func cameraDoesNotInvolveLocationAccess() async {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .allow
+        let manager = TabManager(factory: .privateSession())
+        manager.dialogs = dialogs
+
+        #expect(await manager.decidePermission(.camera, site: "https://meet.example"))
+        #expect(dialogs.systemLocationChecks == 0)
     }
 
     @Test func notNowIsNotRemembered() async {

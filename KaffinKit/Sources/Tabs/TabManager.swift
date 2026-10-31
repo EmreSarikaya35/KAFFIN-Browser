@@ -298,12 +298,19 @@ public final class TabManager {
 
     /// Without a store, as in private windows, every request asks again and nothing is kept.
     func decidePermission(_ kind: SitePermissionKind, site: String) async -> Bool {
-        if let stored = try? await sitePermissions?.sitePermission(kind, site: site) { return stored }
-        let answer = await dialogs?.askPermission(kind, for: site) ?? .notNow
-        if answer != .notNow {
-            try? await sitePermissions?.setSitePermission(kind, site: site, allowed: answer == .allow)
+        var isAllowed: Bool
+        if let stored = try? await sitePermissions?.sitePermission(kind, site: site) {
+            isAllowed = stored
+        } else {
+            let answer = await dialogs?.askPermission(kind, for: site) ?? .notNow
+            if answer != .notNow {
+                try? await sitePermissions?.setSitePermission(kind, site: site, allowed: answer == .allow)
+            }
+            isAllowed = answer == .allow
         }
-        return answer == .allow
+        // The site's permission is useless until macOS also lets KAFFIN read the location.
+        if isAllowed, kind == .location { isAllowed = await dialogs?.ensureSystemLocationAccess() ?? false }
+        return isAllowed
     }
 
     func offerSavedLogins(on tab: Tab, origin: String) async {

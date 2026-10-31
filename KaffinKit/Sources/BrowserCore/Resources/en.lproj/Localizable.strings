@@ -18,6 +18,9 @@
 "permission.microphone" = "microphone";
 "permission.location" = "location";
 "permission.allow" = "Allow";
+"permission.locationOff" = "Location is off for KAFFIN";
+"permission.locationOffDetail" = "Turn on Location Services for KAFFIN in System Settings, then reload this page.";
+"permission.openSettings" = "Open System Settings";
 "permission.block" = "Block";
 "permission.notNow" = "Not Now";
 "permission.empty" = "Sites you allow or block for camera, microphone or location appear here.";

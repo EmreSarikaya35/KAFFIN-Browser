@@ -4,6 +4,7 @@ import Observation
 public protocol HistoryStoring: Sendable {
     func recentHistory(limit: Int) async throws -> [HistoryEntry]
     func searchHistory(_ query: String, limit: Int) async throws -> [HistoryEntry]
+    func topSites(matching prefix: String, limit: Int) async throws -> [SiteMatch]
     func deleteHistory(url: URL) async throws
     func clearHistory() async throws
 }

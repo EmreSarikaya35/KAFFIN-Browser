@@ -67,4 +67,56 @@ struct SuggestionRankerTests {
     @Test func blankQueryHasNoRows() {
         #expect(SuggestionRanker.rank(query: "  ", bookmarks: [], history: [], engine: .google, limit: 6).isEmpty)
     }
+
+    private func site(_ host: String, visits: Int = 10) -> SiteMatch {
+        SiteMatch(url: URL(string: "https://www.\(host)/")!, host: host, visits: visits)
+    }
+
+    @Test func mostVisitedSiteComesFirstAndCompletes() {
+        let rows = SuggestionRanker.rank(
+            query: "y",
+            bookmarks: [],
+            history: [],
+            sites: [site("youtube.com", visits: 40), site("yahoo.com", visits: 2)],
+            engine: .google,
+            limit: 6
+        )
+        #expect(rows.first?.kind == .site)
+        #expect(rows.first?.url.absoluteString == "https://www.youtube.com/")
+        #expect(rows.first?.completion == "youtube.com")
+        #expect(rows.dropFirst().allSatisfy { $0.completion == nil })
+        #expect(rows.contains { $0.kind == .search })
+    }
+
+    @Test func bookmarkedSiteCompletesWhenNothingWasVisited() {
+        let rows = SuggestionRanker.rank(
+            query: "swi",
+            bookmarks: [BookmarkItem(url: URL(string: "https://www.swift.org/")!, title: "Swift")],
+            history: [],
+            engine: .google,
+            limit: 6
+        )
+        #expect(rows.first?.kind == .bookmark)
+        #expect(rows.first?.completion == "swift.org")
+    }
+
+    @Test(arguments: ["y u", "you/tube", "https://y"])
+    func phrasesAndAddressesNeverComplete(query: String) {
+        let rows = SuggestionRanker.rank(
+            query: query, bookmarks: [], history: [], sites: [site("youtube.com")], engine: .google, limit: 6
+        )
+        #expect(rows.allSatisfy { $0.completion == nil })
+    }
+
+    @Test func typingWwwKeepsIt() {
+        let rows = SuggestionRanker.rank(
+            query: "www.y", bookmarks: [], history: [], sites: [site("youtube.com")], engine: .google, limit: 6
+        )
+        #expect(rows.first?.completion == "www.youtube.com")
+    }
+
+    @Test func keepsWhatUserTypedInCompletion() {
+        #expect(SuggestionRanker.complete(typed: "YouT", host: "youtube.com") == "YouTube.com")
+        #expect(SuggestionRanker.complete(typed: "g", host: "youtube.com") == nil)
+    }
 }

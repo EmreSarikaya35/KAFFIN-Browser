@@ -1,10 +1,12 @@
 import AppKit
 import BrowserCore
+import OSLog
 import WebKit
 
 /// Central WebKit delegate for one window's tabs.
 @MainActor
 final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
+    private static let logger = Logger(subsystem: "com.kaffin.browser", category: "Navigation")
     private static let webSchemes: Set<String> = ["http", "https", "about", "blob", "data"]
 
     private unowned let tabManager: TabManager
@@ -76,9 +78,17 @@ final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
     ) async -> WKNavigationResponsePolicy {
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
         let download = DownloadRules.shouldDownload(
+            mimeType: response.response.mimeType,
             canShowMIMEType: response.canShowMIMEType,
             contentDisposition: disposition
         )
+        // Kept so a wrong decision leaves evidence. The MIME type carries no browsing detail.
+        if response.isForMainFrame, !response.canShowMIMEType || download {
+            let type = response.response.mimeType ?? "none"
+            Self.logger.notice(
+                "Main frame \(type, privacy: .public) canShow=\(response.canShowMIMEType) attachment=\(disposition != nil) download=\(download)"
+            )
+        }
         return download && response.isForMainFrame ? .download : .allow
     }
 

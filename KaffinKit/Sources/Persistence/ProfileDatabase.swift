@@ -20,7 +20,7 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
         try Self.migrator.migrate(writer)
     }
 
-    private static var migrator: DatabaseMigrator {
+    static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1") { db in
             try db.create(table: "historyURLs") { t in
@@ -56,6 +56,14 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
                 t.column("data", .blob).notNull()
             }
         }
+        migrator.registerMigration("v3") { db in
+            try db.alter(table: "historyURLs") { t in t.add(column: "host", .text) }
+            for row in try Row.fetchAll(db, sql: "SELECT id, url FROM historyURLs") {
+                let host = URL(string: row["url"]).flatMap(SiteMatch.siteHost)
+                try db.execute(sql: "UPDATE historyURLs SET host = ? WHERE id = ?", arguments: [host, row["id"]])
+            }
+            try db.create(index: "historyURLs_on_host", on: "historyURLs", columns: ["host"])
+        }
         return migrator
     }
 
@@ -68,13 +76,13 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
         try await writer.write { db in
             try db.execute(
                 sql: """
-                INSERT INTO historyURLs (url, title, visitCount, lastVisit) VALUES (?, ?, 1, ?)
+                INSERT INTO historyURLs (url, title, visitCount, lastVisit, host) VALUES (?, ?, 1, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
                     title = COALESCE(excluded.title, title),
                     visitCount = visitCount + 1,
                     lastVisit = excluded.lastVisit
                 """,
-                arguments: [address, title, date]
+                arguments: [address, title, date, SiteMatch.siteHost(of: url)]
             )
             try db.execute(
                 sql: "INSERT INTO historyVisits (historyURLId, visitedAt) SELECT id, ? FROM historyURLs WHERE url = ?",
@@ -104,11 +112,7 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
     }
 
     public func searchHistory(_ query: String, limit: Int) async throws -> [HistoryEntry] {
-        let escaped = query
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-        let pattern = "%\(escaped)%"
+        let pattern = "%\(Self.escapeLike(query))%"
         return try await writer.read { db in
             try Self.entries(
                 db,
@@ -119,6 +123,29 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
                 """,
                 arguments: [pattern, pattern, limit]
             )
+        }
+    }
+
+    public func topSites(matching prefix: String, limit: Int) async throws -> [SiteMatch] {
+        let pattern = "\(Self.escapeLike(prefix.lowercased()))%"
+        return try await writer.read { db in
+            // With a single MAX, SQLite takes the bare url from the site's most visited page.
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT host, url, SUM(visitCount) AS visits, MAX(visitCount)
+                FROM historyURLs WHERE host LIKE ? ESCAPE '\\'
+                GROUP BY host ORDER BY visits DESC LIMIT ?
+                """,
+                arguments: [pattern, limit]
+            ).compactMap { row in
+                guard let page = URL(string: row["url"]),
+                      var root = URLComponents(url: page, resolvingAgainstBaseURL: false) else { return nil }
+                root.path = "/"
+                root.query = nil
+                root.fragment = nil
+                return root.url.map { SiteMatch(url: $0, host: row["host"], visits: row["visits"]) }
+            }
         }
     }
 
@@ -139,6 +166,12 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
         try await writer.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM historyVisits") ?? 0
         }
+    }
+
+    private static func escapeLike(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 
     private static func entries(_ db: Database, sql: String, arguments: StatementArguments) throws -> [HistoryEntry] {

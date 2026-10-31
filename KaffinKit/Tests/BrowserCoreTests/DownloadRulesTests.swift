@@ -41,16 +41,30 @@ struct DownloadRulesTests {
     }
 
     @Test func downloadsWhatCannotBeShown() {
-        #expect(DownloadRules.shouldDownload(canShowMIMEType: false, contentDisposition: nil))
+        #expect(DownloadRules.shouldDownload(mimeType: "application/zip", canShowMIMEType: false, contentDisposition: nil))
     }
 
     @Test func showsDisplayableContent() {
-        #expect(!DownloadRules.shouldDownload(canShowMIMEType: true, contentDisposition: nil))
-        #expect(!DownloadRules.shouldDownload(canShowMIMEType: true, contentDisposition: "inline"))
+        #expect(!DownloadRules.shouldDownload(mimeType: "image/png", canShowMIMEType: true, contentDisposition: nil))
+        #expect(!DownloadRules.shouldDownload(mimeType: "text/html", canShowMIMEType: true, contentDisposition: "inline"))
     }
 
     @Test func honorsAttachmentHeaderInAnyCase() {
-        #expect(DownloadRules.shouldDownload(canShowMIMEType: true, contentDisposition: "Attachment; filename=a.pdf"))
+        #expect(DownloadRules.shouldDownload(
+            mimeType: "text/html",
+            canShowMIMEType: true,
+            contentDisposition: "Attachment; filename=a.pdf"
+        ))
+    }
+
+    // A real page once downloaded as www.youtube.com.html because WebKit briefly reported it as not showable.
+    @Test(arguments: ["text/html", "TEXT/HTML", "application/xhtml+xml"])
+    func webPagesAreNeverDownloadedWithoutBeingAsked(mimeType: String) {
+        #expect(!DownloadRules.shouldDownload(mimeType: mimeType, canShowMIMEType: false, contentDisposition: nil))
+    }
+
+    @Test func missingTypeFollowsWebKit() {
+        #expect(DownloadRules.shouldDownload(mimeType: nil, canShowMIMEType: false, contentDisposition: nil))
     }
 }
 

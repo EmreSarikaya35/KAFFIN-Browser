@@ -46,6 +46,14 @@ Keychain use was verified in the sandboxed Release app. Ad hoc signatures change
 
 WebKit has no favicon API. Declared icons are read in the default client world, with `/favicon.ico` as the fallback. An ephemeral session fetches them with no cookies, and each host is tried once per launch. Icons are re-encoded to small PNGs and stored by host and port. Private windows fetch no icons.
 
+## Web pages and downloads
+
+`www.youtube.com.html` was once saved instead of shown. The file was a complete, ordinary YouTube home page, so WebKit must have reported a real page as not showable. HTML and XHTML now download only when the server sends `Content-Disposition: attachment`. If WebKit really cannot show one, the navigation fails to the error page instead of leaving a surprise file. The trigger was not reproduced, so main frame decisions with `canShow=false` or a download are logged for evidence.
+
+## Address bar completion
+
+History is grouped by site, with `www.` removed, and visits add up across pages, so a site's many pages count toward it. Enter opens the top site row only while the field still holds the typed text or its completion. After a deletion, no completion runs and Enter keeps the remaining text.
+
 ## Open sandbox question
 
 The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.

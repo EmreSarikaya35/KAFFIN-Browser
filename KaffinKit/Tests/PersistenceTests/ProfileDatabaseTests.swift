@@ -1,6 +1,7 @@
 import BrowserCore
 import Foundation
-import Persistence
+import GRDB
+@testable import Persistence
 import Testing
 
 struct ProfileDatabaseTests {
@@ -112,6 +113,45 @@ struct ProfileDatabaseTests {
         #expect(try await db.loadSession() == [windows[1]])
     }
 
+    @Test func sitesAddUpAllPagesAndIgnoreWww() async throws {
+        let db = try ProfileDatabase.inMemory()
+        try await db.recordVisit(url: URL(string: "https://www.youtube.com/a")!, title: nil, at: .now)
+        try await db.recordVisit(url: URL(string: "https://www.youtube.com/b")!, title: nil, at: .now)
+        try await db.recordVisit(url: URL(string: "https://www.youtube.com/b")!, title: nil, at: .now)
+        try await db.recordVisit(url: URL(string: "https://yandex.com/")!, title: nil, at: .now)
+
+        let sites = try await db.topSites(matching: "y", limit: 5)
+        #expect(sites.map(\.host) == ["youtube.com", "yandex.com"])
+        #expect(sites.map(\.visits) == [3, 1])
+        #expect(sites[0].url.absoluteString == "https://www.youtube.com/")
+    }
+
+    @Test func siteSearchMatchesOnlyStartOfHostAndTreatsWildcardsLiterally() async throws {
+        let db = try ProfileDatabase.inMemory()
+        try await db.recordVisit(url: URL(string: "https://example.com/")!, title: nil, at: .now)
+
+        #expect(try await db.topSites(matching: "ample", limit: 5).isEmpty)
+        #expect(try await db.topSites(matching: "%", limit: 5).isEmpty)
+        #expect(try await db.topSites(matching: "EX", limit: 5).map(\.host) == ["example.com"])
+    }
+
+    @Test func historyFromBeforeSiteColumnIsBackfilled() async throws {
+        let path = FileManager.default.temporaryDirectory.appending(path: "kaffin-\(UUID()).sqlite").path(percentEncoded: false)
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let queue = try DatabaseQueue(path: path)
+        try ProfileDatabase.migrator.migrate(queue, upTo: "v2")
+        try await queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO historyURLs (url, visitCount, lastVisit) VALUES (?, 1, ?)",
+                arguments: ["https://www.youtube.com/watch", Date()]
+            )
+        }
+        try queue.close()
+
+        let sites = try await ProfileDatabase(path: path).topSites(matching: "you", limit: 5)
+        #expect(sites.map(\.host) == ["youtube.com"])
+    }
+
     @Test func faviconsPersistByHost() async throws {
         let db = try ProfileDatabase.inMemory()
         try await db.saveFavicon(host: "example.com", data: Data([1]))
@@ -142,10 +182,21 @@ struct SuggestionsModelTests {
         return (SuggestionsModel(history: db, bookmarks: { [] }), db)
     }
 
-    @Test func findsHistoryForTypedText() async throws {
+    @Test func findsVisitedSiteWithItsPageTitle() async throws {
         let (model, _) = try await makeModel()
         await model.update(text: "swift", engine: .google)
-        #expect(model.items.contains { $0.kind == .history })
+        #expect(model.items.first?.kind == .site)
+        #expect(model.items.first?.title == "swift.org")
+        #expect(model.items.first?.detail == "Swift")
+    }
+
+    @Test func findsPagesByTitleToo() async throws {
+        let db = try ProfileDatabase.inMemory()
+        try await db.recordVisit(url: URL(string: "https://example.com/rehber")!, title: "Kahve Rehberi", at: .now)
+        let model = SuggestionsModel(history: db, bookmarks: { [] })
+
+        await model.update(text: "kahve", engine: .google)
+        #expect(model.items.contains { $0.kind == .history && $0.title == "Kahve Rehberi" })
     }
 
     @Test func staleResultCannotReplaceNewerText() async throws {
@@ -154,7 +205,37 @@ struct SuggestionsModelTests {
         let older = Task { await model.update(text: "s", engine: .google) }
         await model.update(text: "swift", engine: .google)
         await older.value
-        #expect(model.items.contains { $0.title == "Swift" })
+        #expect(model.inlineCompletion == InlineCompletion(typed: "swift", text: "swift.org"))
+    }
+
+    @Test func typingFirstLetterOffersMostVisitedSite() async throws {
+        let db = try ProfileDatabase.inMemory()
+        for page in 0..<5 {
+            try await db.recordVisit(url: URL(string: "https://www.youtube.com/watch?v=\(page)")!, title: "Video \(page)", at: .now)
+        }
+        try await db.recordVisit(url: URL(string: "https://yahoo.com/")!, title: "Yahoo", at: .now)
+        let model = SuggestionsModel(history: db, bookmarks: { [] })
+
+        await model.update(text: "y", engine: .google)
+
+        #expect(model.items.first?.url.absoluteString == "https://www.youtube.com/")
+        #expect(model.inlineCompletion == InlineCompletion(typed: "y", text: "youtube.com"))
+        #expect(model.defaultSuggestion(for: "y") == model.items.first)
+        #expect(model.defaultSuggestion(for: "youtube.com") == model.items.first)
+    }
+
+    @Test func deletingTurnsCompletionOffSoEnterKeepsTypedText() async throws {
+        let (model, _) = try await makeModel()
+        await model.update(text: "sw", engine: .google, allowsCompletion: false)
+
+        #expect(model.inlineCompletion == nil)
+        #expect(model.defaultSuggestion(for: "sw") == nil)
+    }
+
+    @Test func rowsFromOlderTextAreNeverTheEnterTarget() async throws {
+        let (model, _) = try await makeModel()
+        await model.update(text: "s", engine: .google)
+        #expect(model.defaultSuggestion(for: "sw") == nil)
     }
 
     @Test func arrowKeysWrapThroughRowsAndBackToTypedText() async throws {

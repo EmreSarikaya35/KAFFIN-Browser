@@ -20,7 +20,7 @@ let package = Package(
         .target(name: "Browser", dependencies: ["BrowserCore", "Credentials", "Persistence", "Tabs", "BrowserUI"]),
         .testTarget(name: "BrowserCoreTests", dependencies: ["BrowserCore"]),
         .testTarget(name: "CredentialsTests", dependencies: ["Credentials"]),
-        .testTarget(name: "PersistenceTests", dependencies: ["Persistence"]),
+        .testTarget(name: "PersistenceTests", dependencies: ["Persistence", .product(name: "GRDB", package: "GRDB.swift")]),
         .testTarget(name: "TabsTests", dependencies: ["Tabs"]),
     ]
 )

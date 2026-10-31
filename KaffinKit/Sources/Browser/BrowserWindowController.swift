@@ -242,8 +242,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func submitAddress(_ text: String) {
-        if let selected = suggestions.selected {
-            open(selected)
+        if let chosen = suggestions.selected ?? suggestions.defaultSuggestion(for: text) {
+            open(chosen)
             return
         }
         suggestions.clear()

@@ -91,8 +91,9 @@ public struct BrowserChromeView: View {
                 placeholder: String(format: L10n.string("address.placeholder"), search.engine.name),
                 focusRequest: focusRequest,
                 onSubmit: onSubmit,
-                onEdit: { text in
-                    Task { await suggestions.update(text: text, engine: search.engine) }
+                inlineCompletion: suggestions.inlineCompletion,
+                onEdit: { text, grew in
+                    Task { await suggestions.update(text: text, engine: search.engine, allowsCompletion: grew) }
                 },
                 onMoveSelection: { suggestions.move(by: $0) },
                 onEndEditing: {

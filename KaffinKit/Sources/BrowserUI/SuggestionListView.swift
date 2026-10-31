@@ -45,13 +45,13 @@ public struct SuggestionListView: View {
         .padding(.horizontal, 14)
         .frame(height: 30)
         .contentShape(Rectangle())
-        .background(model.selected == item ? ChromePalette.field : .clear)
+        .background(model.isHighlighted(item) ? ChromePalette.field : .clear)
     }
 
     private func symbol(for kind: Suggestion.Kind) -> String {
         switch kind {
         case .search: "magnifyingglass"
-        case .address: "globe"
+        case .site, .address: "globe"
         case .bookmark: "star"
         case .history: "clock"
         }

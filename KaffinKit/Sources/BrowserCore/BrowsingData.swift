@@ -16,6 +16,28 @@ public struct HistoryEntry: Sendable, Equatable, Identifiable {
     }
 }
 
+/// A whole site across all its visited pages, for address bar completion.
+public struct SiteMatch: Sendable, Equatable {
+    /// The site's home page.
+    public let url: URL
+    /// Lowercase host without `www.`.
+    public let host: String
+    public let visits: Int
+
+    public init(url: URL, host: String, visits: Int) {
+        self.url = url
+        self.host = host
+        self.visits = visits
+    }
+
+    /// The name that groups a site's pages, or nil for addresses without a host.
+    public static func siteHost(of url: URL) -> String? {
+        guard var host = url.host()?.lowercased(), !host.isEmpty else { return nil }
+        if host.hasPrefix("www.") { host.removeFirst(4) }
+        return host
+    }
+}
+
 public struct BookmarkItem: Sendable, Equatable, Identifiable {
     public let url: URL
     public let title: String

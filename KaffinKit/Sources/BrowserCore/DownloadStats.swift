@@ -35,6 +35,17 @@ public enum DownloadStatus {
 
     private static func timeLeft(seconds: Int64) -> String {
         if seconds < 60 { return String(format: L10n.string("downloads.secondsLeft"), seconds + 1) }
-        return String(format: L10n.string("downloads.minutesLeft"), (seconds + 59) / 60)
+        let minutes = (seconds + 59) / 60
+        if minutes < 60 { return String(format: L10n.string("downloads.minutesLeft"), minutes) }
+        let hours = minutes / 60
+        if hours < 24 {
+            let rest = minutes % 60
+            return rest == 0
+                ? String(format: L10n.string("downloads.hoursLeft"), hours)
+                : String(format: L10n.string("downloads.hoursMinutesLeft"), hours, rest)
+        }
+        return hours % 24 == 0
+            ? String(format: L10n.string("downloads.daysLeft"), hours / 24)
+            : String(format: L10n.string("downloads.daysHoursLeft"), hours / 24, hours % 24)
     }
 }

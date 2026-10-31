@@ -40,6 +40,11 @@
 "downloads.speed" = "%@/s";
 "downloads.secondsLeft" = "%lld s left";
 "downloads.minutesLeft" = "%lld min left";
+"downloads.hoursLeft" = "%lld h left";
+"downloads.hoursMinutesLeft" = "%lld h %lld min left";
+"downloads.daysLeft" = "%lld d left";
+"downloads.daysHoursLeft" = "%lld d %lld h left";
+"downloads.pausedRestarts" = "Paused. This site cannot continue a download, so Resume starts over.";
 "downloads.paused" = "Paused";
 "downloads.resume" = "Resume";
 "downloads.retry" = "Retry";

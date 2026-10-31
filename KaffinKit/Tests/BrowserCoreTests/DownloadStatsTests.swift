@@ -49,6 +49,22 @@ struct DownloadStatusTests {
         #expect(text == "1 MB / 2 MB")
     }
 
+    @Test(arguments: [
+        (Int64(3_600), "1 h left"),
+        (Int64(30_000), "8 h 20 min left"),
+        (Int64(90_000), "1 d 1 h left"),
+        (Int64(172_800), "2 d left"),
+    ])
+    func longWaitsReadInHoursAndDays(seconds: Int64, expected: String) {
+        let text = DownloadStatus.text(
+            received: 0,
+            total: seconds * 1_000_000,
+            bytesPerSecond: 1_000_000,
+            locale: english
+        )
+        #expect(text.hasSuffix("· \(expected)"), "\(text)")
+    }
+
     @Test func longWaitsReadInMinutes() {
         let text = DownloadStatus.text(received: 0, total: 600_000_000, bytesPerSecond: 1_000_000, locale: english)
         #expect(text == "Zero kB / 600 MB · 1 MB/s · 10 min left")

@@ -44,6 +44,8 @@ public final class WindowManager: NSObject {
         AppearanceController.shared.applySavedMode()
         NSApp.mainMenu = MainMenuBuilder.build(windowManager: self)
         sleepScheduler.start()
+        // Downloads do not survive quitting, so anything still staged is only a leftover.
+        try? FileManager.default.removeItem(at: DownloadManager.stagingRoot)
         Task {
             for profile in profiles.profiles {
                 let session = session(for: profile.id)

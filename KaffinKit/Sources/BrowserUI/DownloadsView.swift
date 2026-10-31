@@ -43,7 +43,9 @@ struct DownloadsView: View {
             case .paused:
                 status(item, speed: 0)
                 HStack {
-                    Text(L10n.string("downloads.paused")).foregroundStyle(.secondary)
+                    Text(L10n.string(item.canContinue ? "downloads.paused" : "downloads.pausedRestarts"))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Button(L10n.string("downloads.resume")) { Task { await downloads.resume(item) } }.buttonStyle(.link)
                     Button(L10n.string("downloads.cancel")) { downloads.cancel(item) }.buttonStyle(.link)

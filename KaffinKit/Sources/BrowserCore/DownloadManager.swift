@@ -24,11 +24,15 @@ public final class DownloadItem: Identifiable {
     /// Negative until the server states the size, and for servers that never do.
     public fileprivate(set) var totalBytes: Int64 = -1
     public fileprivate(set) var bytesPerSecond: Int64 = 0
+    /// False once paused without resume data, because the file will then start over.
+    public fileprivate(set) var canContinue = true
     public fileprivate(set) var destination: URL?
 
     @ObservationIgnored fileprivate var download: WKDownload
     @ObservationIgnored fileprivate let request: URLRequest?
     @ObservationIgnored fileprivate var resumeData: Data?
+    /// Running from the moment Pause is pressed until WebKit hands over the resume data.
+    @ObservationIgnored fileprivate var stopping: Task<Void, Never>?
     @ObservationIgnored fileprivate var rate = TransferRate()
     @ObservationIgnored fileprivate var lastUpdate = Date.distantPast
     @ObservationIgnored fileprivate var progress: NSKeyValueObservation?
@@ -130,17 +134,28 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
         guard item.state == .downloading else { return }
         item.state = .paused
         item.progress = nil
-        let resumeData = await withCheckedContinuation { continuation in
-            item.download.cancel { continuation.resume(returning: $0) }
+        let download = item.download
+        let stopping = Task {
+            let resumeData = await withCheckedContinuation { continuation in
+                download.cancel { continuation.resume(returning: $0) }
+            }
+            guard item.state == .paused else { return }
+            item.resumeData = resumeData
+            item.canContinue = resumeData != nil
         }
-        item.resumeData = resumeData
+        item.stopping = stopping
+        await stopping.value
     }
 
     /// Continues a paused download, or starts over when there is nothing to resume from.
     public func resume(_ item: DownloadItem) async {
+        // A quick Resume must wait, or it finds no resume data yet and starts over.
+        await item.stopping?.value
+        item.stopping = nil
         guard item.state != .downloading, item.state != .finished,
               let webView = item.download.webView ?? resumingWebView else { return }
         item.state = .downloading
+        item.canContinue = true
         if let resumeData = item.resumeData {
             item.resumeData = nil
             follow(await webView.resumeDownload(fromResumeData: resumeData), for: item)

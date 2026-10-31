@@ -12,6 +12,8 @@ struct WebKitIntegrationTests {
     private let manager: TabManager
 
     init() throws {
+        // The suite is serialized, and two tests check this shared folder ends up empty.
+        try? FileManager.default.removeItem(at: DownloadManager.stagingRoot)
         folder = FileManager.default.temporaryDirectory.appending(path: "kaffin-\(UUID())")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         downloads = DownloadManager(directory: folder)
@@ -118,6 +120,38 @@ struct WebKitIntegrationTests {
         #expect(server.rangeRequests.count == 1, "Resuming asks only for the missing bytes")
         #expect(item.receivedBytes == 2048)
         #expect(item.totalBytes == 2048)
+    }
+
+    @Test func resumingRightAfterPauseStillContinues() async throws {
+        let server = try await LocalTestServer()
+        let downloads = DownloadManager(directory: folder, factory: WebViewFactory(profileID: UUID()))
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads)
+        manager.newTab(url: server.baseURL.appending(path: "resumable"))
+        try await wait("download started") { downloads.items.first?.fileName == "report.bin" }
+        try await Task.sleep(for: .milliseconds(300))
+
+        let item = try #require(downloads.items.first)
+        let pausing = Task { await downloads.pause(item) }
+        while item.state != .paused { await Task.yield() }
+        await downloads.resume(item)
+        await pausing.value
+
+        try await wait("download finished") { item.state == .finished }
+        #expect(file() == Data(repeating: 120, count: 2048))
+        #expect(server.rangeRequests.first ?? 0 > 0, "Continues from the bytes it already has")
+    }
+
+    @Test func pausedDownloadSaysWhenItMustStartOver() async throws {
+        let server = try await LocalTestServer()
+        let downloads = DownloadManager(directory: folder, factory: WebViewFactory(profileID: UUID()))
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads)
+        manager.newTab(url: server.baseURL.appending(path: "slow"))
+        try await wait("download started") { downloads.items.first?.fileName == "report.bin" }
+
+        let item = try #require(downloads.items.first)
+        await downloads.pause(item)
+        #expect(!item.canContinue, "This server sends no validator, so WebKit cannot continue")
+        downloads.remove(item)
     }
 
     @Test func serverWithoutResumeSupportRestartsCleanly() async throws {

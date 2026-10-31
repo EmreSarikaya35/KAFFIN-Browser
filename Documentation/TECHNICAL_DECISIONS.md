@@ -102,7 +102,7 @@ The `sqlite3` tool leaves foreign keys off by default. Deleting history there le
 
 ## Signing
 
-Debug builds are ad hoc signed without the hardened runtime flag, which Xcode omits for that configuration. Release builds carry it (`flags=0x10002(adhoc,runtime)`) and launch under the sandbox. Developer ID signing is unverified until Phase 8.
+Debug builds are ad hoc signed without the hardened runtime flag, which Xcode omits for that configuration. Release builds carry it (`flags=0x10002(adhoc,runtime)`) and launch under the sandbox. Developer ID signing is unverified. The first DMG stays ad hoc signed by the user's choice, without Apple Developer membership, so it is not notarized and has no Sparkle updates.
 
 ## Testing
 

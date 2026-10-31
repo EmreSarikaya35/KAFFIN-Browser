@@ -4,8 +4,8 @@
 | ----------------------------- | ---------------------------------------------------------- |
 | 0. Technical verification     | Automated checks done; manual checks open                  |
 | 1. Project foundation         | Done, verified in the sandboxed app                        |
-| 2. Browser interface          | In progress, remaining items listed in project notes    |
-| 3. Browser essentials         | In progress, remaining items listed in project notes    |
+| 2. Browser interface          | Done, apart from dragging a tab onto another window        |
+| 3. Browser essentials         | Done, app-wide search and appearance remain open choices   |
 | 4. Performance engine         | Not started                                                |
 | 5. Extension infrastructure   | Not started                                                |
 | 6. Extension compatibility    | Not started                                                |

@@ -19,7 +19,7 @@ final class ProfileSession {
     let credentials: KeychainCredentialStore
     let passwords: PasswordsModel
     let favicons: FaviconLoader
-    let downloads = DownloadManager()
+    let downloads: DownloadManager
     let settingsNavigation = SettingsNavigation()
     var historyWindow: NSWindow?
     var settingsWindow: NSWindow?
@@ -29,7 +29,9 @@ final class ProfileSession {
         self.id = id
         let database = Self.openDatabase(for: id)
         self.database = database
-        factory = WebViewFactory(profileID: id)
+        let factory = WebViewFactory(profileID: id)
+        self.factory = factory
+        downloads = DownloadManager(factory: factory)
         bookmarks = BookmarksModel(store: database)
         history = HistoryModel(store: database)
         credentials = KeychainCredentialStore(profileID: id)

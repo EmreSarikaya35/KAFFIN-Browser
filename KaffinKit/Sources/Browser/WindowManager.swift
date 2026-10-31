@@ -14,6 +14,7 @@ public final class WindowManager: NSObject {
 
     private let profiles = ProfileList()
     private let search = SearchSettings()
+    private let accent = AccentSettings()
     private var sessions: [UUID: ProfileSession] = [:]
     private var controllers: [BrowserWindowController] = []
     private var isStarted = false
@@ -58,6 +59,7 @@ public final class WindowManager: NSObject {
             bookmarks: session.bookmarks,
             downloads: session.downloads,
             search: search,
+            accent: accent,
             credentials: session.credentials,
             favicons: session.favicons,
             suggestions: session.makeSuggestions(includingHistory: true),
@@ -126,14 +128,15 @@ public final class WindowManager: NSObject {
     private func openPrivateWindow(
         in session: ProfileSession,
         factory: WebViewFactory = .privateSession(),
-        downloads: DownloadManager = DownloadManager(),
+        downloads: DownloadManager? = nil,
         adopting tab: Tabs.Tab? = nil
     ) {
         show(BrowserWindowController(
             factory: factory,
             bookmarks: session.bookmarks,
-            downloads: downloads,
+            downloads: downloads ?? DownloadManager(factory: factory),
             search: search,
+            accent: accent,
             credentials: nil,
             favicons: nil,
             suggestions: session.makeSuggestions(includingHistory: false),
@@ -217,6 +220,7 @@ public final class WindowManager: NSObject {
         let view = SettingsView(
             navigation: session.settingsNavigation,
             search: search,
+            accent: accent,
             passwords: session.passwords
         ) { [weak self] in
             self?.setAsDefaultBrowser(nil)

@@ -18,6 +18,12 @@
 "downloads.title" = "Downloads";
 "downloads.empty" = "Files you download appear here.";
 "downloads.cancel" = "Cancel";
+"downloads.pause" = "Pause";
+"downloads.paused" = "Paused";
+"downloads.resume" = "Resume";
+"downloads.retry" = "Retry";
+"settings.accent" = "Accent color";
+"settings.accentReset" = "Use System Color";
 "downloads.open" = "Open";
 "downloads.reveal" = "Show in Finder";
 "downloads.remove" = "Remove from List";

@@ -1,3 +1,4 @@
+import AppKit
 import BrowserCore
 import LocalAuthentication
 import SwiftUI
@@ -17,24 +18,27 @@ public final class SettingsNavigation {
 public struct SettingsView: View {
     @Bindable var navigation: SettingsNavigation
     let search: SearchSettings
+    let accent: AccentSettings
     let passwords: PasswordsModel
     let onSetDefault: () -> Void
 
     public init(
         navigation: SettingsNavigation,
         search: SearchSettings,
+        accent: AccentSettings,
         passwords: PasswordsModel,
         onSetDefault: @escaping () -> Void
     ) {
         self.navigation = navigation
         self.search = search
+        self.accent = accent
         self.passwords = passwords
         self.onSetDefault = onSetDefault
     }
 
     public var body: some View {
         TabView(selection: $navigation.pane) {
-            GeneralSettingsView(search: search, onSetDefault: onSetDefault)
+            GeneralSettingsView(search: search, accent: accent, onSetDefault: onSetDefault)
                 .tabItem { Text(L10n.string("settings.general")) }
                 .tag(SettingsPane.general)
             PasswordsSettingsView(model: passwords)
@@ -48,6 +52,7 @@ public struct SettingsView: View {
 
 private struct GeneralSettingsView: View {
     let search: SearchSettings
+    let accent: AccentSettings
     let onSetDefault: () -> Void
 
     @State private var template = ""
@@ -66,10 +71,30 @@ private struct GeneralSettingsView: View {
                     Text(L10n.string("settings.customInvalid")).foregroundStyle(.secondary)
                 }
             }
+            HStack {
+                ColorPicker(L10n.string("settings.accent"), selection: accentColor, supportsOpacity: false)
+                if accent.color != nil {
+                    Button(L10n.string("settings.accentReset")) { accent.color = nil }
+                }
+            }
             Button(L10n.string("menu.setDefault"), action: onSetDefault)
         }
         .onAppear {
             if search.engine.name == SearchSettings.customName { template = search.engine.queryTemplate }
+        }
+    }
+
+    private var accentColor: Binding<Color> {
+        Binding {
+            accent.color?.swiftUIColor ?? .accentColor
+        } set: { color in
+            if let rgb = NSColor(color).usingColorSpace(.sRGB) {
+                accent.color = AccentColor(
+                    red: Double(rgb.redComponent),
+                    green: Double(rgb.greenComponent),
+                    blue: Double(rgb.blueComponent)
+                )
+            }
         }
     }
 

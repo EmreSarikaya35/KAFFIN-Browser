@@ -10,6 +10,7 @@ import WebKit
 public final class DownloadItem: Identifiable {
     public enum State: Equatable {
         case downloading
+        case paused
         case finished
         case cancelled
         case failed(String)
@@ -21,12 +22,15 @@ public final class DownloadItem: Identifiable {
     public fileprivate(set) var fraction = 0.0
     public fileprivate(set) var destination: URL?
 
-    @ObservationIgnored fileprivate let download: WKDownload
+    @ObservationIgnored fileprivate var download: WKDownload
+    @ObservationIgnored fileprivate let request: URLRequest?
+    @ObservationIgnored fileprivate var resumeData: Data?
     @ObservationIgnored fileprivate var progress: NSKeyValueObservation?
     @ObservationIgnored fileprivate var stagedFile: URL?
 
     fileprivate init(download: WKDownload) {
         self.download = download
+        request = download.originalRequest
         fileName = download.originalRequest?.url?.lastPathComponent ?? ""
     }
 }
@@ -36,7 +40,6 @@ public final class DownloadItem: Identifiable {
 /// In the sandbox, WebKit's network process can write to the app's container but not to the user's Downloads folder,
 /// and the download stalls without an error. Files are therefore staged in the container, then moved by the app,
 /// which holds the Downloads entitlement.
-// shortcut: no pause, resume or retry yet; WebKit only offers cancel with resume data. Add with the Downloads page.
 @MainActor
 @Observable
 public final class DownloadManager: NSObject, WKDownloadDelegate {
@@ -46,10 +49,14 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
 
     public private(set) var items: [DownloadItem] = []
     @ObservationIgnored private let directory: URL?
+    @ObservationIgnored private let factory: WebViewFactory?
+    /// Resuming needs a WebView of the same profile, and the original tab may be gone.
+    @ObservationIgnored private lazy var resumingWebView = factory?.makeWebView()
 
     /// Without a directory, files go to the user's Downloads folder.
-    public init(directory: URL? = nil) {
+    public init(directory: URL? = nil, factory: WebViewFactory? = nil) {
         self.directory = directory
+        self.factory = factory
     }
 
     private var folder: URL? {
@@ -61,9 +68,14 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     public func attach(_ download: WKDownload) {
-        download.delegate = self
         let item = DownloadItem(download: download)
         items.insert(item, at: 0)
+        follow(download, for: item)
+    }
+
+    private func follow(_ download: WKDownload, for item: DownloadItem) {
+        download.delegate = self
+        item.download = download
         item.progress = download.progress.observe(\.fractionCompleted) { [weak item] progress, _ in
             let fraction = progress.fractionCompleted
             Task { @MainActor in
@@ -74,16 +86,50 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     public func cancel(_ item: DownloadItem) {
-        guard item.state == .downloading else { return }
+        guard item.state == .downloading || item.state == .paused else { return }
+        let wasRunning = item.state == .downloading
         item.state = .cancelled
         item.progress = nil
+        item.resumeData = nil
+        guard wasRunning else {
+            removeStagingFolder(of: item)
+            return
+        }
         item.download.cancel { [weak self] _ in
             Task { @MainActor in self?.removeStagingFolder(of: item) }
         }
     }
 
+    /// WebKit has no real pause: the download stops, and keeps resume data if the server allows resuming.
+    public func pause(_ item: DownloadItem) async {
+        guard item.state == .downloading else { return }
+        item.state = .paused
+        item.progress = nil
+        let resumeData = await withCheckedContinuation { continuation in
+            item.download.cancel { continuation.resume(returning: $0) }
+        }
+        item.resumeData = resumeData
+    }
+
+    /// Continues a paused download, or starts over when there is nothing to resume from.
+    public func resume(_ item: DownloadItem) async {
+        guard item.state != .downloading, item.state != .finished,
+              let webView = item.download.webView ?? resumingWebView else { return }
+        item.state = .downloading
+        if let resumeData = item.resumeData {
+            item.resumeData = nil
+            follow(await webView.resumeDownload(fromResumeData: resumeData), for: item)
+        } else if let request = item.request {
+            removeStagingFolder(of: item)
+            item.fraction = 0
+            follow(await webView.startDownload(using: request), for: item)
+        }
+    }
+
     public func remove(_ item: DownloadItem) {
-        if item.state != .downloading { items.removeAll { $0 === item } }
+        guard item.state != .downloading else { return }
+        removeStagingFolder(of: item)
+        items.removeAll { $0 === item }
     }
 
     public func reveal(_ item: DownloadItem) {
@@ -134,9 +180,11 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     public func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        guard let item = item(for: download), item.state != .cancelled else { return }
+        guard let item = item(for: download), item.state == .downloading else { return }
         fail(item, error)
-        removeStagingFolder(of: item)
+        // Kept when WebKit can resume, so Retry continues instead of starting over.
+        item.resumeData = resumeData
+        if resumeData == nil { removeStagingFolder(of: item) }
     }
 
     private func fail(_ item: DownloadItem?, _ error: Error) {

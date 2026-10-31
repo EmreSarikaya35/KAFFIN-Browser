@@ -1,5 +1,10 @@
 import AppKit
+import BrowserCore
 import SwiftUI
+
+extension AccentColor {
+    var swiftUIColor: Color { Color(.sRGB, red: red, green: green, blue: blue) }
+}
 
 /// Chrome's neutral light and dark surfaces: the strip recedes, the active tab and toolbar share one color.
 enum ChromePalette {

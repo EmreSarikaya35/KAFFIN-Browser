@@ -38,6 +38,7 @@ public struct BrowserChromeView: View {
     let bookmarks: BookmarksModel
     let downloads: DownloadManager
     let search: SearchSettings
+    let accent: AccentSettings
     let suggestions: SuggestionsModel
     let profileMenu: ProfileMenu?
     let isPrivate: Bool
@@ -52,6 +53,7 @@ public struct BrowserChromeView: View {
         bookmarks: BookmarksModel,
         downloads: DownloadManager,
         search: SearchSettings,
+        accent: AccentSettings,
         suggestions: SuggestionsModel,
         profileMenu: ProfileMenu?,
         isPrivate: Bool,
@@ -62,6 +64,7 @@ public struct BrowserChromeView: View {
         self.bookmarks = bookmarks
         self.downloads = downloads
         self.search = search
+        self.accent = accent
         self.suggestions = suggestions
         self.profileMenu = profileMenu
         self.isPrivate = isPrivate
@@ -71,13 +74,14 @@ public struct BrowserChromeView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            TabStripView(tabManager: tabManager, isPrivate: isPrivate)
+            TabStripView(tabManager: tabManager, accent: accent.color?.swiftUIColor, isPrivate: isPrivate)
             toolbar
             if bookmarks.isBarVisible {
                 BookmarksBarView(bookmarks: bookmarks) { tabManager.selectedTab?.load($0.url) }
             }
             Divider()
         }
+        .tint(accent.color?.swiftUIColor)
     }
 
     private var toolbar: some View {
@@ -268,6 +272,7 @@ private struct TabDrag {
 
 private struct TabStripView: View {
     let tabManager: TabManager
+    let accent: Color?
     let isPrivate: Bool
 
     @State private var drag: TabDrag?
@@ -281,6 +286,7 @@ private struct TabStripView: View {
                 TabItemView(
                     tab: tab,
                     tabManager: tabManager,
+                    accent: accent,
                     dragOffset: dragOffset(of: tab, at: index),
                     isDragging: drag?.id == tab.id,
                     onDragChanged: { updateDrag(of: tab, translation: $0, tabWidth: $1) },
@@ -345,6 +351,7 @@ private struct TabStripView: View {
 private struct TabItemView: View {
     let tab: Tabs.Tab
     let tabManager: TabManager
+    let accent: Color?
     let dragOffset: CGFloat
     let isDragging: Bool
     let onDragChanged: (CGFloat, CGFloat) -> Void
@@ -398,6 +405,11 @@ private struct TabItemView: View {
             isSelected ? ChromePalette.toolbar : .clear,
             in: UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8)
         )
+        .overlay(alignment: .top) {
+            if isSelected, let accent {
+                accent.frame(height: 2).padding(.horizontal, 8)
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture { tabManager.select(tab.id) }
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)

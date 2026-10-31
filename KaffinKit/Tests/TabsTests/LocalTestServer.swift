@@ -14,6 +14,14 @@ final class LocalTestServer: @unchecked Sendable {
                 let line = data.flatMap { String(data: $0, encoding: .utf8) }?.split(separator: "\r\n").first ?? ""
                 let path = line.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
                 self?.record(path)
+                let request = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                if path == "/resumable" {
+                    let offset = request.split(separator: "\r\n").first { $0.lowercased().hasPrefix("range: bytes=") }
+                        .flatMap { Int($0.dropFirst("range: bytes=".count).prefix { $0.isNumber }) }
+                    if let offset { self?.recordRange(offset) }
+                    Self.respondResumable(from: offset ?? 0, on: connection, queue: queue)
+                    return
+                }
                 Self.respond(to: path, on: connection, queue: queue)
             }
         }
@@ -29,7 +37,38 @@ final class LocalTestServer: @unchecked Sendable {
     private let lock = NSLock()
     private var paths: [String] = []
 
+    private var ranges: [Int] = []
+
     var requestedPaths: [String] { lock.withLock { paths } }
+    var rangeRequests: [Int] { lock.withLock { ranges } }
+
+    private func recordRange(_ offset: Int) {
+        lock.withLock { ranges.append(offset) }
+    }
+
+    /// Sends half quickly and holds the rest back, leaving time to pause. Supports `Range`.
+    private static func respondResumable(from offset: Int, on connection: NWConnection, queue: DispatchQueue) {
+        let body = Data(repeating: 120, count: 2048)
+        let remaining = body.suffix(from: offset)
+        let status = offset == 0 ? "200 OK" : "206 Partial Content"
+        var head = "HTTP/1.1 \(status)\r\nContent-Type: application/octet-stream\r\n"
+            + "Content-Disposition: attachment; filename=\"report.bin\"\r\nAccept-Ranges: bytes\r\n"
+            + "ETag: \"v1\"\r\nContent-Length: \(remaining.count)\r\nConnection: close\r\n"
+        if offset > 0 { head += "Content-Range: bytes \(offset)-\(body.count - 1)/\(body.count)\r\n" }
+        head += "\r\n"
+        guard offset == 0 else {
+            connection.send(content: Data(head.utf8) + remaining, isComplete: true, completion: .contentProcessed { _ in
+                connection.cancel()
+            })
+            return
+        }
+        connection.send(content: Data(head.utf8) + body.prefix(1024), completion: .idempotent)
+        queue.asyncAfter(deadline: .now() + 2) {
+            connection.send(content: body.suffix(from: 1024), isComplete: true, completion: .contentProcessed { _ in
+                connection.cancel()
+            })
+        }
+    }
 
     private func record(_ path: String) {
         lock.withLock { paths.append(path) }

@@ -21,6 +21,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     let downloads: DownloadManager
     let factory: WebViewFactory
     private let search: SearchSettings
+    private let accent: AccentSettings
     private var chromeHost: NSHostingView<BrowserChromeView>!
     private var focusRequest = 0
     var onClose: ((BrowserWindowController) -> Void)?
@@ -37,6 +38,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         bookmarks: BookmarksModel,
         downloads: DownloadManager,
         search: SearchSettings,
+        accent: AccentSettings,
         credentials: (any CredentialStoring)?,
         favicons: FaviconLoader?,
         suggestions: SuggestionsModel,
@@ -47,6 +49,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         adopting tab: Tabs.Tab? = nil
     ) {
         self.factory = factory
+        self.accent = accent
         self.profileID = profileID
         self.profileMenu = profileMenu
         tabManager = TabManager(
@@ -196,6 +199,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             bookmarks: bookmarks,
             downloads: downloads,
             search: search,
+            accent: accent,
             suggestions: suggestions,
             profileMenu: profileMenu,
             isPrivate: isPrivate,

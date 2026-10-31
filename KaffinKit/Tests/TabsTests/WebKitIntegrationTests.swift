@@ -95,6 +95,75 @@ struct WebKitIntegrationTests {
         #expect(!FileManager.default.fileExists(atPath: folder.appending(path: "report.bin").path(percentEncoded: false)))
     }
 
+    private func file(_ name: String = "report.bin") -> Data? {
+        FileManager.default.contents(atPath: folder.appending(path: name).path(percentEncoded: false))
+    }
+
+    @Test func pausedDownloadResumesFromWhereItStopped() async throws {
+        let server = try await LocalTestServer()
+        let downloads = DownloadManager(directory: folder, factory: WebViewFactory(profileID: UUID()))
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads)
+        manager.newTab(url: server.baseURL.appending(path: "resumable"))
+        try await wait("download started") { downloads.items.first?.fileName == "report.bin" }
+        try await Task.sleep(for: .milliseconds(300))
+
+        let item = try #require(downloads.items.first)
+        await downloads.pause(item)
+        #expect(item.state == .paused)
+        #expect(file() == nil, "A paused file stays out of the Downloads folder")
+
+        await downloads.resume(item)
+        try await wait("download finished") { item.state == .finished }
+        #expect(file() == Data(repeating: 120, count: 2048))
+        #expect(server.rangeRequests.count == 1, "Resuming asks only for the missing bytes")
+    }
+
+    @Test func serverWithoutResumeSupportRestartsCleanly() async throws {
+        let server = try await LocalTestServer()
+        let downloads = DownloadManager(directory: folder, factory: WebViewFactory(profileID: UUID()))
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads)
+        manager.newTab(url: server.baseURL.appending(path: "slow"))
+        try await wait("download started") { downloads.items.first?.fileName == "report.bin" }
+
+        let item = try #require(downloads.items.first)
+        await downloads.pause(item)
+        await downloads.resume(item)
+
+        try await wait("download finished") { item.state == .finished }
+        #expect(file()?.count == 2048)
+    }
+
+    @Test func cancelledDownloadCanBeRetried() async throws {
+        let server = try await LocalTestServer()
+        let downloads = DownloadManager(directory: folder, factory: WebViewFactory(profileID: UUID()))
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads)
+        manager.newTab(url: server.baseURL.appending(path: "slow"))
+        try await wait("download started") { downloads.items.first?.fileName == "report.bin" }
+
+        let item = try #require(downloads.items.first)
+        downloads.cancel(item)
+        await downloads.resume(item)
+
+        try await wait("download finished") { item.state == .finished }
+        #expect(file()?.count == 2048)
+    }
+
+    @Test func removingPausedDownloadLeavesNoStagedFile() async throws {
+        let server = try await LocalTestServer()
+        let downloads = DownloadManager(directory: folder, factory: WebViewFactory(profileID: UUID()))
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads)
+        manager.newTab(url: server.baseURL.appending(path: "resumable"))
+        try await wait("download started") { downloads.items.first?.fileName == "report.bin" }
+
+        let item = try #require(downloads.items.first)
+        await downloads.pause(item)
+        downloads.remove(item)
+
+        #expect(downloads.items.isEmpty)
+        let staged = try FileManager.default.contentsOfDirectory(at: DownloadManager.stagingRoot, includingPropertiesForKeys: nil)
+        #expect(staged.isEmpty)
+    }
+
     @Test func refusedConnectionShowsErrorPageAndRecordsNoVisit() async throws {
         var visits = 0
         var titles: [String] = []

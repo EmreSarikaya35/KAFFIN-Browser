@@ -19,6 +19,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private var loginHost: NSHostingView<LoginPromptView>!
     private var suggestionHost: NSHostingView<SuggestionListView>!
     private var storeHost: NSHostingView<StoreInstallView>?
+    private var pageDialogs: SheetPageDialogs?
     private let suggestions: SuggestionsModel
     let downloads: DownloadManager
     let factory: WebViewFactory
@@ -85,6 +86,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
 
         window.delegate = self
+        let pageDialogs = SheetPageDialogs(window: window)
+        self.pageDialogs = pageDialogs
+        tabManager.dialogs = pageDialogs
         installContent(in: window)
         tabManager.onSelectionChange = { [weak self] in self?.show($0) }
         tabManager.onLastTabClosed = { [weak self] in self?.window?.close() }

@@ -153,6 +153,18 @@ struct CRXFileTests {
     }
 }
 
+@MainActor
+struct ExtensionsModelTests {
+    @Test func updateChecksAreOnUntilTurnedOff() {
+        let defaults = UserDefaults(suiteName: "kaffin-test-\(UUID())")!
+        let model = ExtensionsModel(defaults: defaults)
+        #expect(model.checksForUpdates)
+
+        model.checksForUpdates = false
+        #expect(!ExtensionsModel(defaults: defaults).checksForUpdates)
+    }
+}
+
 struct ChromeWebStoreTests {
     private let id = "ddkjiahejlhfcafbddmgiahcphecmpfh"
 

@@ -15,6 +15,15 @@ final class LocalTestServer: @unchecked Sendable {
                 let path = line.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
                 self?.record(path)
                 let request = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                // "ada:secret" in Base64.
+                if path == "/auth", !request.contains("Authorization: Basic YWRhOnNlY3JldA==") {
+                    let refused = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Test Realm\"\r\n"
+                        + "Content-Length: 0\r\nConnection: close\r\n\r\n"
+                    connection.send(content: Data(refused.utf8), isComplete: true, completion: .contentProcessed { _ in
+                        connection.cancel()
+                    })
+                    return
+                }
                 if path == "/resumable" {
                     let offset = request.split(separator: "\r\n").first { $0.lowercased().hasPrefix("range: bytes=") }
                         .flatMap { Int($0.dropFirst("range: bytes=".count).prefix { $0.isNumber }) }

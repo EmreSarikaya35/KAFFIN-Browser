@@ -178,7 +178,7 @@ private struct PerformanceSettingsView: View {
 }
 
 private struct ExtensionsSettingsView: View {
-    let model: ExtensionsModel
+    @Bindable var model: ExtensionsModel
     @State private var storeText = ""
     @State private var problem: String?
     @State private var isInstalling = false
@@ -196,6 +196,7 @@ private struct ExtensionsSettingsView: View {
                 Button(L10n.string("extensions.installFile")) { choose(folders: false) }
                 if isInstalling { ProgressView().controlSize(.small) }
             }
+            Toggle(L10n.string("extensions.checkUpdates"), isOn: $model.checksForUpdates)
             if let problem {
                 Text(problem).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }

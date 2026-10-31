@@ -84,9 +84,13 @@ KAFFIN hosts WebKit's runtime: `ExtensionHost` owns one `WKWebExtensionControlle
 
 The store's Add button works only in Chrome, so a listing address or ID downloads the CRX directly. Whether that fits the Chrome Web Store terms needs a decision before public release.
 
-## Open sandbox question
+## Fraudulent website warnings
 
-The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.
+WebKit's warning needs the sandbox to reach `com.apple.Safari.SafeBrowsing.Service`, granted by a temporary-exception entitlement. Without it the warning never appeared, although the preference was on. With it, Google's phishing test page logged `threat found`, and it was not recorded in history. This entitlement would need review for the Mac App Store, which is out of scope.
+
+## Navigation policy
+
+`LinkPolicy` decides every navigation: `file:` and script addresses never open, `data:` cannot fill the window, and other apps open only after a click and a confirmation. Page dialogs and HTTP sign-in name the site. Certificate checks stay with WebKit, so a bad certificate fails. Each decision is covered by a test, except that a real link click to another app was not exercised.
 
 ## Signing
 

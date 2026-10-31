@@ -51,6 +51,13 @@ final class ProfileSession {
         isPrepared = true
         await bookmarks.reload()
         await extensions.loadInstalled()
+        if database == nil {
+            let alert = NSAlert()
+            alert.messageText = L10n.string("dialog.databaseFailed")
+            alert.informativeText = L10n.string("dialog.databaseFailedDetail")
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
     }
 
     private static func askToApprove(_ approval: ExtensionHost.Approval) -> Bool {
@@ -78,7 +85,6 @@ final class ProfileSession {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             return try ProfileDatabase(path: directory.appending(path: "profile.sqlite").path(percentEncoded: false))
         } catch {
-            // shortcut: the browser still runs without saved data, but nothing tells the user yet. Show an alert in Phase 7.
             logger.error("Could not open profile database: \(error.localizedDescription)")
             return nil
         }

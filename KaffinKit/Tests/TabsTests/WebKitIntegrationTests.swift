@@ -522,6 +522,108 @@ struct WebKitIntegrationTests {
         #expect(await store.saved.values.contains("secret"))
     }
 
+    private final class FakeDialogs: PageDialogPresenting {
+        var alerts: [String] = []
+        var confirmAnswer = false
+        var promptAnswer: String?
+        var credential: URLCredential?
+        var authRequests: [String] = []
+
+        func alert(_ message: String, from site: String) async {
+            alerts.append(message)
+        }
+
+        func confirm(_ message: String, from site: String) async -> Bool {
+            confirmAnswer
+        }
+
+        func prompt(_ message: String, defaultText: String?, from site: String) async -> String? {
+            promptAnswer ?? defaultText
+        }
+
+        func credential(for site: String, realm: String?) async -> URLCredential? {
+            authRequests.append(realm ?? "")
+            return credential
+        }
+
+        func confirmOpening(_ url: URL, from site: String) async -> Bool {
+            false
+        }
+    }
+
+    private func script(_ tab: Tab, _ source: String) async throws -> Any? {
+        try await tab.webView.callAsyncJavaScript(source, contentWorld: .page)
+    }
+
+    @Test func pageAlertReachesTheUser() async throws {
+        let server = try await LocalTestServer()
+        let dialogs = FakeDialogs()
+        manager.dialogs = dialogs
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("page") { tab.title != nil && !tab.isLoading }
+
+        _ = try await script(tab, "alert('Saved'); return 1")
+        #expect(dialogs.alerts == ["Saved"])
+    }
+
+    @Test func pageConfirmReturnsTheAnswer() async throws {
+        let server = try await LocalTestServer()
+        let dialogs = FakeDialogs()
+        manager.dialogs = dialogs
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("page") { tab.title != nil && !tab.isLoading }
+
+        #expect(try await script(tab, "return confirm('Delete?')") as? Bool == false)
+        dialogs.confirmAnswer = true
+        #expect(try await script(tab, "return confirm('Delete?')") as? Bool == true)
+    }
+
+    @Test func pagePromptReturnsTheText() async throws {
+        let server = try await LocalTestServer()
+        let dialogs = FakeDialogs()
+        dialogs.promptAnswer = "Ada"
+        manager.dialogs = dialogs
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("page") { tab.title != nil && !tab.isLoading }
+
+        #expect(try await script(tab, "return prompt('Name?', 'x')") as? String == "Ada")
+    }
+
+    @Test func protectedPageAsksForCredentialsAndLoads() async throws {
+        let server = try await LocalTestServer()
+        let dialogs = FakeDialogs()
+        dialogs.credential = URLCredential(user: "ada", password: "secret", persistence: .forSession)
+        manager.dialogs = dialogs
+
+        let tab = manager.newTab(url: server.baseURL.appending(path: "auth"))
+        try await wait("page behind login") { tab.title == "Test Page" }
+        #expect(dialogs.authRequests == ["Test Realm"])
+    }
+
+    @Test func cancellingLoginDoesNotLoadThePage() async throws {
+        let server = try await LocalTestServer()
+        let dialogs = FakeDialogs()
+        manager.dialogs = dialogs
+
+        let tab = manager.newTab(url: server.baseURL.appending(path: "auth"))
+        try await wait("asked") { !dialogs.authRequests.isEmpty }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(tab.title != "Test Page")
+        #expect(dialogs.authRequests.count == 1, "A refused login must not ask again in a loop")
+    }
+
+    @Test func pageCannotPutDataAddressInTheWindow() async throws {
+        let server = try await LocalTestServer()
+        let page = server.baseURL.appending(path: "page")
+        let tab = manager.newTab(url: page)
+        try await wait("page") { tab.title != nil && !tab.isLoading }
+
+        _ = try await script(tab, "location.href = 'data:text/html,<title>Fake Bank</title>'; return 1")
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(tab.title != "Fake Bank")
+        #expect(tab.url == page)
+    }
+
     private func makeLoginManager(store: InMemoryCredentialStore) -> TabManager {
         TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads, credentials: store)
     }

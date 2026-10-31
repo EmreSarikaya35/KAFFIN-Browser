@@ -178,6 +178,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
 
     /// Asks the store once. An extension whose update the user declines stays on its version.
     public func checkForUpdates() async {
+        guard model.checksForUpdates else { return }
         var installed: [String: String] = [:]
         for record in records {
             if let storeID = record.storeID, let version = extensions[record.id]?.displayVersion {

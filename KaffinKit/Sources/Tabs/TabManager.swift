@@ -30,6 +30,7 @@ public final class TabManager {
     @ObservationIgnored public var onPageTitle: ((URL, String) -> Void)?
     @ObservationIgnored public var onMoveToNewWindow: ((Tab.ID) -> Void)?
     @ObservationIgnored public var onTabEvent: ((TabEvent) -> Void)?
+    @ObservationIgnored public weak var dialogs: (any PageDialogPresenting)?
 
     @ObservationIgnored private let factory: WebViewFactory
     @ObservationIgnored private var closedTabURLs: [URL] = []

@@ -9,5 +9,5 @@
 | 4. Performance engine         | Done; energy and long-session benchmarks open              |
 | 5. Extension infrastructure   | Core done; popup and Safari install path unverified        |
 | 6. Extension compatibility    | Started: see EXTENSION_COMPATIBILITY.md                    |
-| 7. Security and stabilization | Not started                                                |
+| 7. Security and stabilization | In progress: see project notes                          |
 | 8. Distribution preparation   | Not started                                                |

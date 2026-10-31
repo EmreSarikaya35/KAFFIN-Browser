@@ -7,7 +7,6 @@ import WebKit
 @MainActor
 final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
     private static let logger = Logger(subsystem: "com.kaffin.browser", category: "Navigation")
-    private static let webSchemes: Set<String> = ["http", "https", "about", "blob", "data"]
 
     private unowned let tabManager: TabManager
     private var errorPageWebViews: Set<ObjectIdentifier> = []
@@ -65,11 +64,58 @@ final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
         decidePolicyFor action: WKNavigationAction
     ) async -> WKNavigationActionPolicy {
         if action.shouldPerformDownload { return .download }
-        guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .allow }
-        if Self.webSchemes.contains(scheme) { return .allow }
-        // mailto: and similar need another app. Requiring a click stops pages launching apps on their own.
-        if action.navigationType == .linkActivated { NSWorkspace.shared.open(url) }
-        return .cancel
+        guard let url = action.request.url, let scheme = url.scheme else { return .allow }
+        let decision = LinkPolicy.decision(
+            scheme: scheme,
+            isMainFrame: action.targetFrame?.isMainFrame != false,
+            isLinkClick: action.navigationType == .linkActivated
+        )
+        switch decision {
+        case .allow:
+            return .allow
+        case .block:
+            return .cancel
+        case .askToOpenApp:
+            let site = action.sourceFrame.securityOrigin.host
+            if await tabManager.dialogs?.confirmOpening(url, from: site) == true { NSWorkspace.shared.open(url) }
+            return .cancel
+        }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async {
+        await tabManager.dialogs?.alert(message, from: frame.securityOrigin.host)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async -> Bool {
+        await tabManager.dialogs?.confirm(message, from: frame.securityOrigin.host) ?? false
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo
+    ) async -> String? {
+        await tabManager.dialogs?.prompt(prompt, defaultText: defaultText, from: frame.securityOrigin.host)
+    }
+
+    /// Certificate checks stay with WebKit, so a bad certificate fails instead of being waved through.
+    func webView(
+        _ webView: WKWebView,
+        respondTo challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        let method = challenge.protectionSpace.authenticationMethod
+        guard method == NSURLAuthenticationMethodHTTPBasic || method == NSURLAuthenticationMethodHTTPDigest else {
+            return (.performDefaultHandling, nil)
+        }
+        guard challenge.previousFailureCount < 3,
+              let credential = await tabManager.dialogs?.credential(
+                  for: challenge.protectionSpace.host,
+                  realm: challenge.protectionSpace.realm
+              ) else {
+            return (.cancelAuthenticationChallenge, nil)
+        }
+        return (.useCredential, credential)
     }
 
     func webView(

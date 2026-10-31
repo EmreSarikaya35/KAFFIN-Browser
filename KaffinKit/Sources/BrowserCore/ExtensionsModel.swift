@@ -225,8 +225,18 @@ public protocol ExtensionCommands: AnyObject {
 public final class ExtensionsModel {
     public var entries: [ExtensionEntry] = []
     @ObservationIgnored public weak var commands: (any ExtensionCommands)?
+    /// Checking sends installed extension identifiers to Google, so it can be turned off.
+    public var checksForUpdates: Bool {
+        didSet { defaults.set(checksForUpdates, forKey: Self.updatesKey) }
+    }
 
-    public init() {}
+    private static let updatesKey = "checksExtensionUpdates"
+    @ObservationIgnored private let defaults: UserDefaults
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        checksForUpdates = defaults.object(forKey: Self.updatesKey) as? Bool ?? true
+    }
 
     public func isInstalled(storeID: String) -> Bool {
         entries.contains { $0.storeID == storeID }

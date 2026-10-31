@@ -20,10 +20,10 @@ public struct LoginPromptView: View {
                     HStack {
                         Spacer()
                         Button(L10n.string("password.notNow")) { tabManager.dismissLoginPrompt(on: tab) }
+                        // No keyboard shortcut: Return belongs to the page, and must never save a password.
                         Button(L10n.string(isUpdate ? "password.update" : "password.save")) {
                             Task { await tabManager.acceptLoginPrompt(on: tab) }
                         }
-                        .keyboardShortcut(.defaultAction)
                     }
                 case .fill(let logins):
                     Text(L10n.string("password.fillTitle")).font(.headline)

@@ -4,6 +4,15 @@ import OSLog
 import Observation
 import WebKit
 
+/// What other parts of the browser, like extensions, may react to.
+public enum TabEvent {
+    case opened(Tab)
+    case closed(Tab)
+    case selected(Tab, previous: Tab?)
+    case moved(Tab, from: Int)
+    case changed(Tab)
+}
+
 /// Owns the tabs of one window. Tab WebViews live here so SwiftUI redraws can never recreate them.
 @MainActor
 @Observable
@@ -20,6 +29,7 @@ public final class TabManager {
     @ObservationIgnored public var onPageVisit: ((URL, String?) -> Void)?
     @ObservationIgnored public var onPageTitle: ((URL, String) -> Void)?
     @ObservationIgnored public var onMoveToNewWindow: ((Tab.ID) -> Void)?
+    @ObservationIgnored public var onTabEvent: ((TabEvent) -> Void)?
 
     @ObservationIgnored private let factory: WebViewFactory
     @ObservationIgnored private var closedTabURLs: [URL] = []
@@ -89,6 +99,7 @@ public final class TabManager {
             tabs.append(tab)
         }
         onChange?()
+        onTabEvent?(.opened(tab))
         return tab
     }
 
@@ -105,11 +116,15 @@ public final class TabManager {
 
     private func connectTitle(of tab: Tab) {
         tab.onTitleChange = { [weak self] url, title in self?.onPageTitle?(url, title) }
+        tab.onPropertiesChange = { [weak self, weak tab] in
+            if let tab { self?.onTabEvent?(.changed(tab)) }
+        }
     }
 
     public func select(_ id: Tab.ID) {
         guard id != selectedTabID, let tab = tabs.first(where: { $0.id == id }) else { return }
-        if let previous = selectedTab {
+        let previous = selectedTab
+        if let previous {
             previous.lastActiveAt = .now
             previous.transition(to: .background)
         }
@@ -122,6 +137,7 @@ public final class TabManager {
         tab.startPendingLoad()
         onSelectionChange?(tab)
         onChange?()
+        onTabEvent?(.selected(tab, previous: previous))
     }
 
     public func close(_ id: Tab.ID) {
@@ -133,6 +149,7 @@ public final class TabManager {
         tab.webView.navigationDelegate = nil
         tab.webView.uiDelegate = nil
         onChange?()
+        onTabEvent?(.closed(tab))
 
         guard !tabs.isEmpty else {
             selectedTabID = nil
@@ -155,6 +172,7 @@ public final class TabManager {
         let tab = tabs.remove(at: index)
         tab.transition(to: .background)
         onChange?()
+        onTabEvent?(.closed(tab))
         if wasSelected { selectNeighbor(of: index) }
         return tab
     }
@@ -166,6 +184,7 @@ public final class TabManager {
         if credentials != nil { loginBridge.takeOver(tab.webView.configuration.userContentController) }
         connectTitle(of: tab)
         tabs.insert(tab, at: tab.isPinned ? pinnedCount : tabs.count)
+        onTabEvent?(.opened(tab))
         select(tab.id)
     }
 
@@ -202,6 +221,7 @@ public final class TabManager {
         let tab = tabs.remove(at: from)
         tabs.insert(tab, at: min(range.upperBound, max(range.lowerBound, index)))
         onChange?()
+        onTabEvent?(.moved(tab, from: from))
     }
 
     public func togglePin(_ id: Tab.ID) {
@@ -210,11 +230,13 @@ public final class TabManager {
         tab.isPinned.toggle()
         tabs.insert(tab, at: pinnedCount)
         onChange?()
+        onTabEvent?(.changed(tab))
     }
 
     public func toggleMute(_ id: Tab.ID) async {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
         tab.isMuted.toggle()
+        onTabEvent?(.changed(tab))
         await TabAudioMuter.apply(muted: tab.isMuted, to: tab.webView)
     }
 

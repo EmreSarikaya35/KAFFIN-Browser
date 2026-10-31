@@ -7,6 +7,7 @@ public enum SettingsPane: Hashable, Sendable {
     case general
     case passwords
     case performance
+    case extensions
 }
 
 @MainActor
@@ -21,6 +22,7 @@ public struct SettingsView: View {
     let search: SearchSettings
     let accent: AccentSettings
     let performance: PerformanceSettings
+    let extensions: ExtensionsModel
     let passwords: PasswordsModel
     let onSetDefault: () -> Void
 
@@ -29,6 +31,7 @@ public struct SettingsView: View {
         search: SearchSettings,
         accent: AccentSettings,
         performance: PerformanceSettings,
+        extensions: ExtensionsModel,
         passwords: PasswordsModel,
         onSetDefault: @escaping () -> Void
     ) {
@@ -36,6 +39,7 @@ public struct SettingsView: View {
         self.search = search
         self.accent = accent
         self.performance = performance
+        self.extensions = extensions
         self.passwords = passwords
         self.onSetDefault = onSetDefault
     }
@@ -51,6 +55,9 @@ public struct SettingsView: View {
             PerformanceSettingsView(settings: performance)
                 .tabItem { Text(L10n.string("settings.performance")) }
                 .tag(SettingsPane.performance)
+            ExtensionsSettingsView(model: extensions)
+                .tabItem { Text(L10n.string("extensions.title")) }
+                .tag(SettingsPane.extensions)
         }
         .padding(16)
         .frame(width: 560, height: 420)
@@ -166,6 +173,94 @@ private struct PerformanceSettingsView: View {
                 action: L10n.string("performance.confirmAction")
             ) { return }
             settings.profile = profile
+        }
+    }
+}
+
+private struct ExtensionsSettingsView: View {
+    let model: ExtensionsModel
+    @State private var storeText = ""
+    @State private var problem: String?
+    @State private var isInstalling = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                TextField(L10n.string("extensions.storeField"), text: $storeText)
+                    .onSubmit(installFromStore)
+                Button(L10n.string("extensions.storeInstall"), action: installFromStore)
+                    .disabled(ChromeWebStore.extensionID(from: storeText) == nil || isInstalling)
+            }
+            HStack {
+                Button(L10n.string("extensions.loadUnpacked")) { choose(folders: true) }
+                Button(L10n.string("extensions.installFile")) { choose(folders: false) }
+                if isInstalling { ProgressView().controlSize(.small) }
+            }
+            if let problem {
+                Text(problem).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if model.entries.isEmpty {
+                Text(L10n.string("extensions.empty"))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(model.entries) { row($0) }
+            }
+        }
+    }
+
+    private func row(_ entry: ExtensionEntry) -> some View {
+        HStack {
+            if let icon = entry.icon { Image(nsImage: icon).resizable().frame(width: 24, height: 24) }
+            VStack(alignment: .leading) {
+                Text(entry.name).lineLimit(1)
+                Text(entry.version).font(.caption).foregroundStyle(.secondary)
+                ForEach(entry.problems, id: \.self) {
+                    Text($0).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            Spacer()
+            Toggle(L10n.string("extensions.enabled"), isOn: Binding {
+                entry.isEnabled
+            } set: {
+                model.commands?.setEnabled(entry.id, $0)
+            })
+            .labelsHidden()
+            Button(L10n.string("history.delete")) {
+                let title = String(format: L10n.string("extensions.removeConfirm"), entry.name)
+                guard Prompts.confirmDelete(title, detail: L10n.string("extensions.removeDetail")) else { return }
+                Task { await model.commands?.remove(entry.id) }
+            }
+        }
+    }
+
+    private func choose(folders: Bool) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = folders
+        panel.canChooseFiles = !folders
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        run { try await model.commands?.install(from: url) }
+    }
+
+    private func installFromStore() {
+        guard let id = ChromeWebStore.extensionID(from: storeText) else { return }
+        run {
+            try await model.commands?.installFromStore(id: id)
+            storeText = ""
+        }
+    }
+
+    private func run(_ work: @escaping () async throws -> Void) {
+        problem = nil
+        isInstalling = true
+        Task {
+            do {
+                try await work()
+            } catch {
+                // Declining the permissions is a choice, not a failure.
+                if error as? ExtensionInstallError != .declined { problem = L10n.string("extensions.installFailed") }
+            }
+            isInstalling = false
         }
     }
 }

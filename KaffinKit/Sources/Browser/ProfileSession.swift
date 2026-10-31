@@ -2,6 +2,7 @@ import AppKit
 import BrowserCore
 import BrowserUI
 import Credentials
+import Extensions
 import Foundation
 import OSLog
 import Persistence
@@ -19,6 +20,8 @@ final class ProfileSession {
     let credentials: KeychainCredentialStore
     let passwords: PasswordsModel
     let favicons: FaviconLoader
+    let extensions: ExtensionHost
+    private var isPrepared = false
     let downloads: DownloadManager
     let settingsNavigation = SettingsNavigation()
     var historyWindow: NSWindow?
@@ -32,11 +35,31 @@ final class ProfileSession {
         let factory = WebViewFactory(profileID: id)
         self.factory = factory
         downloads = DownloadManager(factory: factory)
+        let folder = (try? Self.directory(for: id))?.appending(path: "Extensions") ?? URL.temporaryDirectory
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        extensions = ExtensionHost(profileID: id, directory: folder, factory: factory, approve: Self.askToApprove)
         bookmarks = BookmarksModel(store: database)
         history = HistoryModel(store: database)
         credentials = KeychainCredentialStore(profileID: id)
         passwords = PasswordsModel(store: credentials)
         favicons = FaviconLoader(store: database)
+    }
+
+    /// Loads saved state once, before the profile's first window opens.
+    func prepare() async {
+        guard !isPrepared else { return }
+        isPrepared = true
+        await bookmarks.reload()
+        await extensions.loadInstalled()
+    }
+
+    private static func askToApprove(_ approval: ExtensionHost.Approval) -> Bool {
+        let detail = (approval.permissions + approval.sites).joined(separator: "\n")
+        return Prompts.confirm(
+            String(format: L10n.string("extensions.approveTitle"), approval.name),
+            detail: detail.isEmpty ? L10n.string("extensions.noPermissions") : detail,
+            action: L10n.string("extensions.approve")
+        )
     }
 
     func makeSuggestions(includingHistory: Bool) -> SuggestionsModel {

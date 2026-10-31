@@ -1,6 +1,7 @@
 import AppKit
 import BrowserCore
 import BrowserUI
+import Extensions
 import OSLog
 import SwiftUI
 import Tabs
@@ -49,7 +50,7 @@ public final class WindowManager: NSObject {
         Task {
             for profile in profiles.profiles {
                 let session = session(for: profile.id)
-                await session.bookmarks.reload()
+                await session.prepare()
                 await loadSession(of: session).forEach { openWindow(in: session, restoring: $0) }
             }
             if controllers.isEmpty, pendingURLs.isEmpty { openWindow() }
@@ -70,6 +71,7 @@ public final class WindowManager: NSObject {
             downloads: session.downloads,
             search: search,
             accent: accent,
+            extensions: session.extensions.model,
             credentials: session.credentials,
             favicons: session.favicons,
             suggestions: session.makeSuggestions(includingHistory: true),
@@ -90,6 +92,7 @@ public final class WindowManager: NSObject {
                 if let session { self?.recordTitle(url: url, title: title, in: session) }
             }
         )
+        session.extensions.register(controller.tabs, window: controller.window)
         show(controller, in: session)
         scheduleSessionSave(of: session)
     }
@@ -125,6 +128,7 @@ public final class WindowManager: NSObject {
     private func handleClose(of closed: BrowserWindowController) {
         controllers.removeAll { $0 === closed }
         guard !closed.isPrivate, let session = sessions[closed.profileID] else { return }
+        session.extensions.unregister(closed.tabs)
         let isLastOfProfile = !controllers.contains { !$0.isPrivate && $0.profileID == session.id }
         if isLastOfProfile, controllers.contains(where: { !$0.isPrivate }) {
             session.saveTask?.cancel()
@@ -147,6 +151,7 @@ public final class WindowManager: NSObject {
             downloads: downloads ?? DownloadManager(factory: factory),
             search: search,
             accent: accent,
+            extensions: nil,
             credentials: nil,
             favicons: nil,
             suggestions: session.makeSuggestions(includingHistory: false),
@@ -176,7 +181,7 @@ public final class WindowManager: NSObject {
         }
         let session = session(for: id)
         Task {
-            await session.bookmarks.reload()
+            await session.prepare()
             openWindow(in: session)
         }
     }
@@ -213,6 +218,7 @@ public final class WindowManager: NSObject {
 
         Task {
             do {
+                await session?.extensions.removeAllData()
                 try await ProfileSession.removeData(for: id)
             } catch {
                 Self.logger.error("Could not remove profile data: \(String(describing: error), privacy: .public)")
@@ -232,6 +238,7 @@ public final class WindowManager: NSObject {
             search: search,
             accent: accent,
             performance: performance,
+            extensions: session.extensions.model,
             passwords: session.passwords
         ) { [weak self] in
             self?.setAsDefaultBrowser(nil)

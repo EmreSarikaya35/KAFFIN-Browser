@@ -6,7 +6,9 @@ import WebKit
 public final class WebViewFactory {
     public static let defaultProfileID = UUID(uuidString: "6F1C2A54-0D3B-4C7E-9A11-3E5B7C9D1F20")!
 
-    private let dataStore: WKWebsiteDataStore
+    public let dataStore: WKWebsiteDataStore
+    /// Set for a profile's normal windows. Private windows have none, so extensions never see them.
+    public var extensionController: WKWebExtensionController?
 
     public init(profileID: UUID = WebViewFactory.defaultProfileID) {
         dataStore = WKWebsiteDataStore(forIdentifier: profileID)
@@ -41,6 +43,7 @@ public final class WebViewFactory {
     public func makeConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
+        configuration.webExtensionController = extensionController
         configuration.applicationNameForUserAgent = Self.userAgentToken
         configuration.preferences.isFraudulentWebsiteWarningEnabled = true
         configuration.preferences.isElementFullscreenEnabled = true

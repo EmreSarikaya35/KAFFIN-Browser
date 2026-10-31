@@ -39,6 +39,7 @@ public struct BrowserChromeView: View {
     let downloads: DownloadManager
     let search: SearchSettings
     let accent: AccentSettings
+    let extensions: ExtensionsModel?
     let suggestions: SuggestionsModel
     let profileMenu: ProfileMenu?
     let isPrivate: Bool
@@ -54,6 +55,7 @@ public struct BrowserChromeView: View {
         downloads: DownloadManager,
         search: SearchSettings,
         accent: AccentSettings,
+        extensions: ExtensionsModel?,
         suggestions: SuggestionsModel,
         profileMenu: ProfileMenu?,
         isPrivate: Bool,
@@ -65,6 +67,7 @@ public struct BrowserChromeView: View {
         self.downloads = downloads
         self.search = search
         self.accent = accent
+        self.extensions = extensions
         self.suggestions = suggestions
         self.profileMenu = profileMenu
         self.isPrivate = isPrivate
@@ -109,6 +112,7 @@ public struct BrowserChromeView: View {
             .onChange(of: downloads.items.count) { old, new in
                 if new > old, activeState == .key { isShowingDownloads = true }
             }
+            if let extensions { extensionsMenu(extensions) }
             if let profileMenu { ProfileButton(menu: profileMenu) }
             mainMenu
         }
@@ -158,6 +162,30 @@ public struct BrowserChromeView: View {
         .accessibilityLabel(L10n.string(isBookmarked ? "bookmark.remove" : "bookmark.add"))
     }
 
+    private func extensionsMenu(_ model: ExtensionsModel) -> some View {
+        Menu {
+            ForEach(model.entries.filter(\.isEnabled)) { entry in
+                Button {
+                    model.commands?.performAction(entry.id)
+                } label: {
+                    if let icon = entry.icon {
+                        Label { Text(entry.name) } icon: { Image(nsImage: icon) }
+                    } else {
+                        Text(entry.name)
+                    }
+                }
+            }
+            if !model.entries.isEmpty { Divider() }
+            menuButton("extensions.manage", "showExtensions:")
+        } label: {
+            Image(systemName: "puzzlepiece.extension")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel(L10n.string("extensions.title"))
+    }
+
     private var mainMenu: some View {
         Menu {
             menuButton("tab.new", "newTab:")
@@ -166,6 +194,7 @@ public struct BrowserChromeView: View {
             Divider()
             menuButton("history.show", "showHistory:")
             menuButton("menu.passwords", "showPasswords:")
+            menuButton("extensions.title", "showExtensions:")
             menuButton("menu.settings", "showSettings:")
             Divider()
             menuButton("zoom.in", "zoomIn:")

@@ -8,6 +8,7 @@ import WebKit
 @MainActor
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let tabManager: TabManager
+    private let extensions: ExtensionsModel?
     private let bookmarks: BookmarksModel
     let isPrivate: Bool
     let profileID: UUID
@@ -39,6 +40,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         downloads: DownloadManager,
         search: SearchSettings,
         accent: AccentSettings,
+        extensions: ExtensionsModel?,
         credentials: (any CredentialStoring)?,
         favicons: FaviconLoader?,
         suggestions: SuggestionsModel,
@@ -49,6 +51,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         adopting tab: Tabs.Tab? = nil
     ) {
         self.factory = factory
+        self.extensions = extensions
         self.accent = accent
         self.profileID = profileID
         self.profileMenu = profileMenu
@@ -102,6 +105,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     var snapshot: SessionWindow { tabManager.snapshot() }
+    var tabs: TabManager { tabManager }
 
     func trackChanges(
         onChange: @escaping () -> Void,
@@ -204,6 +208,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             downloads: downloads,
             search: search,
             accent: accent,
+            extensions: extensions,
             suggestions: suggestions,
             profileMenu: profileMenu,
             isPrivate: isPrivate,
@@ -322,6 +327,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func showSettings(_ sender: Any?) {
         onShowSettings?(.general)
+    }
+
+    @objc func showExtensions(_ sender: Any?) {
+        onShowSettings?(.extensions)
     }
 
     @objc func showPasswords(_ sender: Any?) {

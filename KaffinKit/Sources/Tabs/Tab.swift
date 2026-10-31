@@ -31,6 +31,7 @@ public final class Tab: Identifiable {
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private var pending: SessionTab?
     @ObservationIgnored var onTitleChange: ((URL, String) -> Void)?
+    @ObservationIgnored var onPropertiesChange: (() -> Void)?
 
     /// True for a restored tab whose page has not started loading yet.
     public var isAwaitingLoad: Bool { pending != nil }
@@ -51,12 +52,17 @@ public final class Tab: Identifiable {
                 // A restored tab keeps its saved title until its page starts loading.
                 guard !tab.isAwaitingLoad else { return }
                 tab.title = webView.title.flatMap { $0.isEmpty ? nil : $0 }
+                tab.onPropertiesChange?()
                 if !tab.isShowingError, let url = webView.url, let title = tab.title { tab.onTitleChange?(url, title) }
             },
             observe(\.url) { tab, webView in
                 if !tab.isAwaitingLoad { tab.url = webView.url }
+                tab.onPropertiesChange?()
             },
-            observe(\.isLoading) { $0.isLoading = $1.isLoading },
+            observe(\.isLoading) { tab, webView in
+                tab.isLoading = webView.isLoading
+                tab.onPropertiesChange?()
+            },
             observe(\.canGoBack) { $0.canGoBack = $1.canGoBack },
             observe(\.canGoForward) { $0.canGoForward = $1.canGoForward },
         ]

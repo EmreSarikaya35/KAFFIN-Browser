@@ -78,6 +78,12 @@ Automatic sleeping is gated in `TabManager.sleepEligibleTabs` by `PerformanceSet
 
 Measured in the sandboxed Release app with two heavy pages and one muted audio page: WebKit content went from 3 processes and 704 MB to 1 process and 29 MB. The audio tab stayed awake. Windowless tests cannot load media, so this protection rests on that measurement and the `SleepPolicy` unit tests.
 
+## Extensions
+
+KAFFIN hosts WebKit's runtime: `ExtensionHost` owns one `WKWebExtensionController` per profile, and adapters present tabs and windows to it. Packages are copied into the profile's `Extensions` folder, with an `index.json` holding enabled state and granted permissions, because WebKit does not store those grants. This is a JSON file rather than planned SQLite tables, so it deletes with the profile.
+
+The store's Add button works only in Chrome, so a listing address or ID downloads the CRX directly. Whether that fits the Chrome Web Store terms needs a decision before public release.
+
 ## Open sandbox question
 
 The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.

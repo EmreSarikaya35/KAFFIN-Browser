@@ -262,6 +262,10 @@ public final class TabManager {
     }
 
     func handleCommit(of tab: Tab) {
+        // Hooks the new document early, so a muted tab's next page does not start playing with sound.
+        if tab.isMuted {
+            Task { await TabAudioMuter.apply(muted: true, to: tab.webView) }
+        }
         let key = tab.webView.url.flatMap(Self.faviconKey)
         if key != tab.faviconHost {
             tab.faviconHost = key

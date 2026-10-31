@@ -18,9 +18,13 @@ enum TabAudioMuter {
     window.__kaffinIsMuted = muted;
     if (!window.__kaffinHooked) {
       window.__kaffinHooked = true;
-      document.addEventListener('play', (event) => {
-        if (window.__kaffinIsMuted) silence(event.target);
-      }, true);
+      // Players reuse one element between videos and restore their own volume, so `play` alone is too late.
+      // These events do not bubble, but they do reach a capturing listener on the document.
+      for (const type of ['loadstart', 'loadedmetadata', 'play', 'playing', 'volumechange']) {
+        document.addEventListener(type, (event) => {
+          if (window.__kaffinIsMuted && event.target instanceof HTMLMediaElement) silence(event.target);
+        }, true);
+      }
     }
     for (const media of document.querySelectorAll('audio, video')) {
       if (muted) {

@@ -194,6 +194,47 @@ struct WebKitIntegrationTests {
         #expect(try await audioMuted(tab, "#pageMuted") == true)
     }
 
+    // YouTube keeps one player between videos, and the player restores its own volume state.
+    @Test func muteHoldsWhenPageUnmutesItsPlayer() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "media"))
+        try await wait("page") { tab.title == "Media" && !tab.isLoading }
+        await manager.toggleMute(tab.id)
+
+        _ = try await tab.webView.evaluateJavaScript("document.querySelector('#a').muted = false; 1")
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(try await audioMuted(tab) == true)
+    }
+
+    @Test func muteReachesMediaAddedByThePageLater() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "media"))
+        try await wait("page") { tab.title == "Media" && !tab.isLoading }
+        await manager.toggleMute(tab.id)
+
+        // Without a window the page is hidden and WebKit never starts loading media, so the event is sent by hand.
+        _ = try await tab.webView.evaluateJavaScript("""
+        const late = document.createElement('audio');
+        late.id = 'late';
+        document.body.append(late);
+        late.dispatchEvent(new Event('loadstart')); 1
+        """)
+        #expect(try await audioMuted(tab, "#late") == true)
+    }
+
+    @Test func unmutedTabLeavesPageSoundAlone() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "media"))
+        try await wait("page") { tab.title == "Media" && !tab.isLoading }
+        await manager.toggleMute(tab.id)
+        await manager.toggleMute(tab.id)
+
+        _ = try await tab.webView.evaluateJavaScript("document.querySelector('#a').muted = true; 1")
+        _ = try await tab.webView.evaluateJavaScript("document.querySelector('#a').muted = false; 1")
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(try await audioMuted(tab) == false)
+    }
+
     @Test func muteCarriesOverToNextPage() async throws {
         let server = try await LocalTestServer()
         let tab = manager.newTab(url: server.baseURL.appending(path: "media"))

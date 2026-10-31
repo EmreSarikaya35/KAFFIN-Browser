@@ -127,6 +127,12 @@ public struct BrowserChromeView: View {
     private func addressBar(for tab: Tabs.Tab?) -> some View {
         HStack(spacing: 8) {
             SecurityIndicator(security: tab?.isShowingError == true ? .notSecure : AddressDisplay.security(of: tab?.url))
+            if tab?.isCapturing == true {
+                Image(systemName: "record.circle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .accessibilityLabel(L10n.string("address.capturing"))
+            }
             AddressField(
                 text: AddressDisplay.text(for: tab?.url),
                 placeholder: String(format: L10n.string("address.placeholder"), search.engine.name),

@@ -79,6 +79,7 @@ public final class WindowManager: NSObject {
             extensions: session.extensions.model,
             credentials: session.credentials,
             favicons: session.favicons,
+            sitePermissions: session.database,
             suggestions: session.makeSuggestions(includingHistory: true),
             profileID: session.id,
             profileMenu: makeProfileMenu(current: session.id),
@@ -159,6 +160,7 @@ public final class WindowManager: NSObject {
             extensions: nil,
             credentials: nil,
             favicons: nil,
+            sitePermissions: nil,
             suggestions: session.makeSuggestions(includingHistory: false),
             profileID: session.id,
             profileMenu: nil,
@@ -244,6 +246,7 @@ public final class WindowManager: NSObject {
             accent: accent,
             performance: performance,
             extensions: session.extensions.model,
+            sitePermissions: session.sitePermissions,
             passwords: session.passwords
         ) { [weak self] in
             self?.setAsDefaultBrowser(nil)

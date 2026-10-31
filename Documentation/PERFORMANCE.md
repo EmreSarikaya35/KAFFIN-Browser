@@ -33,3 +33,15 @@ Two heavy test pages and one audio page, in the sandboxed Release app:
 | One tab woken        | 2                    | 362 MB |
 
 The pages allocate large arrays on purpose, so real sites will save less.
+
+## Stability (2026-11-01)
+
+Sandboxed Release app, on a small local page.
+
+| Test | Result |
+| ---- | ------ |
+| Forced kill (`kill -9`) after 5 seconds, three times in a row | Each launch restored the earlier tabs. Integrity check passed, no foreign key violations |
+| 300 tabs opened and closed in turn | App memory 37 MB to 42 MB. No WebContent process left over |
+| 50 open tabs | All loaded, 50 WebContent processes, 1320 MB in total, app 66 MB, no crash report |
+
+These cover tab churn and sudden termination. A multi-hour session on real sites has not been run.

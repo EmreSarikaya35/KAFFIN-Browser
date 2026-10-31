@@ -1,6 +1,7 @@
 import BrowserCore
 import Foundation
 import Testing
+import WebKit
 @testable import Tabs
 
 /// Runs real WebKit against a local server, with no window. Proves the delegates are really called.
@@ -549,6 +550,139 @@ struct WebKitIntegrationTests {
         func confirmOpening(_ url: URL, from site: String) async -> Bool {
             false
         }
+
+        var permissionAnswer: PermissionAnswer = .notNow
+        var permissionRequests = 0
+
+        func askPermission(_ kind: SitePermissionKind, for site: String) async -> PermissionAnswer {
+            permissionRequests += 1
+            return permissionAnswer
+        }
+    }
+
+    private actor MemoryPermissions: SitePermissionStoring {
+        var saved: [String: Bool] = [:]
+
+        func sitePermission(_ kind: SitePermissionKind, site: String) -> Bool? {
+            saved["\(kind.rawValue)|\(site)"]
+        }
+
+        func setSitePermission(_ kind: SitePermissionKind, site: String, allowed: Bool) {
+            saved["\(kind.rawValue)|\(site)"] = allowed
+        }
+
+        func removeSitePermission(_ kind: SitePermissionKind, site: String) {
+            saved["\(kind.rawValue)|\(site)"] = nil
+        }
+
+        func allSitePermissions() -> [SitePermission] { [] }
+    }
+
+    @Test func allowedSiteIsRememberedAndAskedOnce() async {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .allow
+        let store = MemoryPermissions()
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), sitePermissions: store)
+        manager.dialogs = dialogs
+
+        #expect(await manager.decidePermission(.camera, site: "https://meet.example"))
+        #expect(await manager.decidePermission(.camera, site: "https://meet.example"))
+        #expect(dialogs.permissionRequests == 1)
+    }
+
+    @Test func blockedSiteStaysBlockedWithoutAsking() async {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .block
+        let store = MemoryPermissions()
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), sitePermissions: store)
+        manager.dialogs = dialogs
+
+        #expect(await !manager.decidePermission(.microphone, site: "https://x.example"))
+        #expect(await !manager.decidePermission(.microphone, site: "https://x.example"))
+        #expect(dialogs.permissionRequests == 1)
+    }
+
+    @Test func notNowIsNotRemembered() async {
+        let dialogs = FakeDialogs()
+        let store = MemoryPermissions()
+        let manager = TabManager(factory: WebViewFactory(profileID: UUID()), sitePermissions: store)
+        manager.dialogs = dialogs
+
+        #expect(await !manager.decidePermission(.location, site: "https://x.example"))
+        #expect(await !manager.decidePermission(.location, site: "https://x.example"))
+        #expect(dialogs.permissionRequests == 2)
+    }
+
+    @Test func privateWindowDecisionsAreNeverStored() async {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .allow
+        let manager = TabManager(factory: .privateSession())
+        manager.dialogs = dialogs
+
+        #expect(await manager.decidePermission(.camera, site: "https://x.example"))
+        #expect(await manager.decidePermission(.camera, site: "https://x.example"))
+        #expect(dialogs.permissionRequests == 2)
+    }
+
+    @Test func withoutAWindowToAskInTheAnswerIsNo() async {
+        #expect(await !manager.decidePermission(.camera, site: "https://x.example"))
+    }
+
+    /// A misnamed delegate method compiles and is then silently never called, so the names are pinned here.
+    @Test(arguments: [
+        "webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:",
+        "webView:requestGeolocationPermissionForOrigin:initiatedByFrame:decisionHandler:",
+        "webView:runJavaScriptAlertPanelWithMessage:initiatedByFrame:completionHandler:",
+        "webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:",
+        "webView:runJavaScriptTextInputPanelWithPrompt:defaultText:initiatedByFrame:completionHandler:",
+        "webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:",
+        "webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:",
+    ])
+    func uiDelegateImplements(selector: String) {
+        let delegate = manager.newTab().webView.uiDelegate
+        #expect(delegate?.responds(to: NSSelectorFromString(selector)) == true)
+    }
+
+    @Test(arguments: [
+        "webView:decidePolicyForNavigationAction:decisionHandler:",
+        "webView:decidePolicyForNavigationResponse:decisionHandler:",
+        "webView:didReceiveAuthenticationChallenge:completionHandler:",
+        "webView:didFailProvisionalNavigation:withError:",
+        "webView:didFailNavigation:withError:",
+        "webView:didCommitNavigation:",
+        "webView:didFinishNavigation:",
+        "webViewWebContentProcessDidTerminate:",
+        "webView:navigationAction:didBecomeDownload:",
+        "webView:navigationResponse:didBecomeDownload:",
+    ])
+    func navigationDelegateImplements(selector: String) {
+        let delegate = manager.newTab().webView.navigationDelegate
+        #expect(delegate?.responds(to: NSSelectorFromString(selector)) == true)
+    }
+
+    @Test func closedTabLeavesMemory() async throws {
+        let server = try await LocalTestServer()
+        weak var released: Tab?
+        weak var releasedView: WKWebView?
+        do {
+            let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+            try await wait("page") { tab.title != nil && !tab.isLoading }
+            manager.newTab()
+            released = tab
+            releasedView = tab.webView
+            manager.close(tab.id)
+        }
+        try await wait("tab released") { released == nil }
+        try await wait("web view released") { releasedView == nil }
+    }
+
+    @Test func sleptTabReleasesItsOldWebView() async throws {
+        let server = try await LocalTestServer()
+        weak var releasedView: WKWebView?
+        let tab = try await openBackgroundPage(server)
+        releasedView = tab.webView
+        #expect(manager.sleep(tab.id))
+        try await wait("old web view released") { releasedView == nil }
     }
 
     private func script(_ tab: Tab, _ source: String) async throws -> Any? {

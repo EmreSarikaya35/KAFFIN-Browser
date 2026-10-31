@@ -8,6 +8,7 @@ public enum SettingsPane: Hashable, Sendable {
     case passwords
     case performance
     case extensions
+    case sitePermissions
 }
 
 @MainActor
@@ -23,6 +24,7 @@ public struct SettingsView: View {
     let accent: AccentSettings
     let performance: PerformanceSettings
     let extensions: ExtensionsModel
+    let sitePermissions: SitePermissionsModel
     let passwords: PasswordsModel
     let onSetDefault: () -> Void
 
@@ -32,6 +34,7 @@ public struct SettingsView: View {
         accent: AccentSettings,
         performance: PerformanceSettings,
         extensions: ExtensionsModel,
+        sitePermissions: SitePermissionsModel,
         passwords: PasswordsModel,
         onSetDefault: @escaping () -> Void
     ) {
@@ -40,6 +43,7 @@ public struct SettingsView: View {
         self.accent = accent
         self.performance = performance
         self.extensions = extensions
+        self.sitePermissions = sitePermissions
         self.passwords = passwords
         self.onSetDefault = onSetDefault
     }
@@ -58,6 +62,9 @@ public struct SettingsView: View {
             ExtensionsSettingsView(model: extensions)
                 .tabItem { Text(L10n.string("extensions.title")) }
                 .tag(SettingsPane.extensions)
+            SitePermissionsSettingsView(model: sitePermissions)
+                .tabItem { Text(L10n.string("settings.sitePermissions")) }
+                .tag(SettingsPane.sitePermissions)
         }
         .padding(16)
         .frame(width: 560, height: 420)
@@ -174,6 +181,44 @@ private struct PerformanceSettingsView: View {
             ) { return }
             settings.profile = profile
         }
+    }
+}
+
+private struct SitePermissionsSettingsView: View {
+    let model: SitePermissionsModel
+
+    var body: some View {
+        Group {
+            if model.entries.isEmpty {
+                Text(L10n.string("permission.empty"))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(model.entries) { entry in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(entry.site).lineLimit(1)
+                            Text(L10n.string("permission.\(entry.kind.rawValue)")).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Picker(L10n.string("permission.\(entry.kind.rawValue)"), selection: Binding {
+                            entry.isAllowed
+                        } set: { allowed in
+                            Task { await model.set(entry, allowed: allowed) }
+                        }) {
+                            Text(L10n.string("permission.allow")).tag(true)
+                            Text(L10n.string("permission.block")).tag(false)
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Button(L10n.string("history.delete")) {
+                            Task { await model.remove(entry) }
+                        }
+                    }
+                }
+            }
+        }
+        .task { await model.reload() }
     }
 }
 

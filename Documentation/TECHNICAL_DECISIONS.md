@@ -88,6 +88,14 @@ The store's Add button works only in Chrome, so a listing address or ID download
 
 WebKit's warning needs the sandbox to reach `com.apple.Safari.SafeBrowsing.Service`, granted by a temporary-exception entitlement. Without it the warning never appeared, although the preference was on. With it, Google's phishing test page logged `threat found`, and it was not recorded in history. This entitlement would need review for the Mac App Store, which is out of scope.
 
+## Site permissions
+
+Camera, microphone, and location decisions are stored per origin in the profile database, and listed in Settings. Private windows have no store, so they ask every time and keep nothing. Without a window to ask in, the answer is no.
+
+## Editing a database by hand
+
+The `sqlite3` tool leaves foreign keys off by default. Deleting history there leaves orphan visit rows, and GRDB then refuses the next migration, so the profile opens without saved data. Always start with `PRAGMA foreign_keys=ON`. This happened to a test copy only.
+
 ## Navigation policy
 
 `LinkPolicy` decides every navigation: `file:` and script addresses never open, `data:` cannot fill the window, and other apps open only after a click and a confirmation. Page dialogs and HTTP sign-in name the site. Certificate checks stay with WebKit, so a bad certificate fails. Each decision is covered by a test, except that a real link click to another app was not exercised.

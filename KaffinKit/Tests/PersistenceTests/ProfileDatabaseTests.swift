@@ -238,6 +238,28 @@ struct ProfileDatabaseTests {
         #expect(elapsed < .seconds(2), "Took \(elapsed)")
     }
 
+    @Test func sitePermissionsPersistPerSiteAndKind() async throws {
+        let db = try ProfileDatabase.inMemory()
+        let site = "https://meet.example"
+        #expect(try await db.sitePermission(.camera, site: site) == nil)
+
+        try await db.setSitePermission(.camera, site: site, allowed: true)
+        try await db.setSitePermission(.microphone, site: site, allowed: false)
+        try await db.setSitePermission(.camera, site: "https://other.example", allowed: false)
+
+        #expect(try await db.sitePermission(.camera, site: site) == true)
+        #expect(try await db.sitePermission(.microphone, site: site) == false)
+        #expect(try await db.sitePermission(.location, site: site) == nil)
+        #expect(try await db.allSitePermissions().count == 3)
+
+        try await db.setSitePermission(.camera, site: site, allowed: false)
+        #expect(try await db.sitePermission(.camera, site: site) == false)
+        #expect(try await db.allSitePermissions().count == 3)
+
+        try await db.removeSitePermission(.camera, site: site)
+        #expect(try await db.sitePermission(.camera, site: site) == nil)
+    }
+
     @Test func faviconsPersistByHost() async throws {
         let db = try ProfileDatabase.inMemory()
         try await db.saveFavicon(host: "example.com", data: Data([1]))

@@ -3,7 +3,7 @@ import Foundation
 import GRDB
 
 /// One profile's local data. Keeps SQL out of every other module.
-public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStoring {
+public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStoring, SitePermissionStoring {
     private let writer: any DatabaseWriter
 
     /// Opens or creates the file, and applies pending migrations.
@@ -77,6 +77,14 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
             }
             try db.alter(table: "bookmarks") { t in
                 t.add(column: "folderId", .integer).references("bookmarkFolders", onDelete: .cascade)
+            }
+        }
+        migrator.registerMigration("v6") { db in
+            try db.create(table: "sitePermissions") { t in
+                t.column("site", .text).notNull()
+                t.column("kind", .text).notNull()
+                t.column("isAllowed", .boolean).notNull()
+                t.primaryKey(["site", "kind"])
             }
         }
         return migrator
@@ -297,6 +305,46 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
             }
             try insert(tree, into: nil)
             return BookmarkImportResult(added: added, skipped: skipped)
+        }
+    }
+
+    // MARK: Site permissions
+
+    public func sitePermission(_ kind: SitePermissionKind, site: String) async throws -> Bool? {
+        try await writer.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: "SELECT isAllowed FROM sitePermissions WHERE site = ? AND kind = ?",
+                arguments: [site, kind.rawValue]
+            )
+        }
+    }
+
+    public func setSitePermission(_ kind: SitePermissionKind, site: String, allowed: Bool) async throws {
+        try await writer.write { db in
+            try db.execute(
+                sql: "INSERT OR REPLACE INTO sitePermissions (site, kind, isAllowed) VALUES (?, ?, ?)",
+                arguments: [site, kind.rawValue, allowed]
+            )
+        }
+    }
+
+    public func removeSitePermission(_ kind: SitePermissionKind, site: String) async throws {
+        try await writer.write { db in
+            try db.execute(
+                sql: "DELETE FROM sitePermissions WHERE site = ? AND kind = ?",
+                arguments: [site, kind.rawValue]
+            )
+        }
+    }
+
+    public func allSitePermissions() async throws -> [SitePermission] {
+        try await writer.read { db in
+            try Row.fetchAll(db, sql: "SELECT * FROM sitePermissions ORDER BY site, kind").compactMap { row in
+                SitePermissionKind(rawValue: row["kind"]).map {
+                    SitePermission(site: row["site"], kind: $0, isAllowed: row["isAllowed"])
+                }
+            }
         }
     }
 

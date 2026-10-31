@@ -71,6 +71,20 @@ final class SheetPageDialogs: PageDialogPresenting {
         return URLCredential(user: user.stringValue, password: password.stringValue, persistence: .forSession)
     }
 
+    func askPermission(_ kind: SitePermissionKind, for site: String) async -> PermissionAnswer {
+        let alert = makeAlert(
+            String(format: L10n.string("permission.question"), site, L10n.string("permission.\(kind.rawValue)")),
+            primary: L10n.string("permission.allow")
+        )
+        alert.addButton(withTitle: L10n.string("permission.block"))
+        alert.addButton(withTitle: L10n.string("permission.notNow"))
+        switch await present(alert) {
+        case .alertFirstButtonReturn: return .allow
+        case .alertSecondButtonReturn: return .block
+        default: return .notNow
+        }
+    }
+
     func confirmOpening(_ url: URL, from site: String) async -> Bool {
         let alert = makeAlert(
             L10n.string("dialog.openApp"),

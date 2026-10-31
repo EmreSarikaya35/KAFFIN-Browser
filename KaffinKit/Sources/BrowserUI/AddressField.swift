@@ -22,6 +22,7 @@ struct AddressField: NSViewRepresentable {
         field.lineBreakMode = .byTruncatingTail
         field.cell?.usesSingleLineMode = true
         field.placeholderString = placeholder
+        field.setAccessibilityLabel(L10n.string("address.label"))
         field.delegate = context.coordinator
         return field
     }

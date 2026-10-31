@@ -10,6 +10,17 @@
 "profile.deleteFailed" = "Some of this profile's data could not be removed.";
 "tab.moveToNewWindow" = "Move Tab to New Window";
 "tab.pin" = "Pin Tab";
+"address.label" = "Address and search bar";
+"address.capturing" = "This tab is using your camera or microphone";
+"settings.sitePermissions" = "Site Permissions";
+"permission.question" = "%1$@ wants to use your %2$@";
+"permission.camera" = "camera";
+"permission.microphone" = "microphone";
+"permission.location" = "location";
+"permission.allow" = "Allow";
+"permission.block" = "Block";
+"permission.notNow" = "Not Now";
+"permission.empty" = "Sites you allow or block for camera, microphone or location appear here.";
 "dialog.ok" = "OK";
 "dialog.cancel" = "Cancel";
 "dialog.from" = "%@ says:";

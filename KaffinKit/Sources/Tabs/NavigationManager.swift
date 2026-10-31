@@ -82,6 +82,37 @@ final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
+    private static func site(of origin: WKSecurityOrigin) -> String {
+        let base = "\(origin.protocol)://\(origin.host)"
+        return origin.port == 0 ? base : "\(base):\(origin.port)"
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
+        initiatedBy frame: WKFrameInfo,
+        type: WKMediaCaptureType
+    ) async -> WKPermissionDecision {
+        let site = Self.site(of: origin)
+        let kinds: [SitePermissionKind] = switch type {
+        case .camera: [.camera]
+        case .microphone: [.microphone]
+        default: [.camera, .microphone]
+        }
+        for kind in kinds {
+            guard await tabManager.decidePermission(kind, site: site) else { return .deny }
+        }
+        return .grant
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        requestGeolocationPermissionFor origin: WKSecurityOrigin,
+        initiatedBy frame: WKFrameInfo
+    ) async -> WKPermissionDecision {
+        await tabManager.decidePermission(.location, site: Self.site(of: origin)) ? .grant : .deny
+    }
+
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async {
         await tabManager.dialogs?.alert(message, from: frame.securityOrigin.host)
     }

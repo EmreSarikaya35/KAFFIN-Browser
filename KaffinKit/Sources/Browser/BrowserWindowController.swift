@@ -45,6 +45,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         extensions: ExtensionsModel?,
         credentials: (any CredentialStoring)?,
         favicons: FaviconLoader?,
+        sitePermissions: (any SitePermissionStoring)?,
         suggestions: SuggestionsModel,
         profileID: UUID,
         profileMenu: ProfileMenu?,
@@ -61,7 +62,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             factory: factory,
             downloads: downloads,
             credentials: credentials,
-            favicons: favicons
+            favicons: favicons,
+            sitePermissions: sitePermissions
         )
         self.suggestions = suggestions
         self.search = search

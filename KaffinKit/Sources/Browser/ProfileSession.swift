@@ -20,6 +20,7 @@ final class ProfileSession {
     let credentials: KeychainCredentialStore
     let passwords: PasswordsModel
     let favicons: FaviconLoader
+    let sitePermissions: SitePermissionsModel
     let extensions: ExtensionHost
     private var isPrepared = false
     let downloads: DownloadManager
@@ -43,6 +44,7 @@ final class ProfileSession {
         credentials = KeychainCredentialStore(profileID: id)
         passwords = PasswordsModel(store: credentials)
         favicons = FaviconLoader(store: database)
+        sitePermissions = SitePermissionsModel(store: database)
     }
 
     /// Loads saved state once, before the profile's first window opens.

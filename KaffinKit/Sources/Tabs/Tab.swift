@@ -20,6 +20,8 @@ public final class Tab: Identifiable {
     public internal(set) var loginPrompt: LoginPrompt?
     /// PNG data of the site's icon.
     public internal(set) var favicon: Data?
+    /// Camera or microphone is live right now, which the address bar always shows.
+    public internal(set) var isCapturing = false
     public internal(set) var isPinned = false
     public internal(set) var isMuted = false
     @ObservationIgnored var faviconHost: String?
@@ -63,6 +65,8 @@ public final class Tab: Identifiable {
                 tab.isLoading = webView.isLoading
                 tab.onPropertiesChange?()
             },
+            observe(\.cameraCaptureState) { $0.isCapturing = $1.cameraCaptureState == .active || $1.microphoneCaptureState == .active },
+            observe(\.microphoneCaptureState) { $0.isCapturing = $1.cameraCaptureState == .active || $1.microphoneCaptureState == .active },
             observe(\.canGoBack) { $0.canGoBack = $1.canGoBack },
             observe(\.canGoForward) { $0.canGoForward = $1.canGoForward },
         ]

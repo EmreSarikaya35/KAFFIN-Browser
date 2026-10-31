@@ -39,6 +39,7 @@ public final class TabManager {
     @ObservationIgnored let downloads: DownloadManager
     @ObservationIgnored private let credentials: (any CredentialStoring)?
     @ObservationIgnored private let favicons: FaviconLoader?
+    @ObservationIgnored private let sitePermissions: (any SitePermissionStoring)?
     @ObservationIgnored private lazy var loginBridge = LoginBridge(tabManager: self)
 
     /// Without credentials, as in private windows, no login script runs at all.
@@ -46,8 +47,10 @@ public final class TabManager {
         factory: WebViewFactory,
         downloads: DownloadManager = DownloadManager(),
         credentials: (any CredentialStoring)? = nil,
-        favicons: FaviconLoader? = nil
+        favicons: FaviconLoader? = nil,
+        sitePermissions: (any SitePermissionStoring)? = nil
     ) {
+        self.sitePermissions = sitePermissions
         self.favicons = favicons
         self.factory = factory
         self.downloads = downloads
@@ -291,6 +294,16 @@ public final class TabManager {
     public func selectAdjacentTab(offset: Int) {
         guard let selectedTabID, let index = tabs.firstIndex(where: { $0.id == selectedTabID }) else { return }
         select(tabs[(index + offset + tabs.count) % tabs.count].id)
+    }
+
+    /// Without a store, as in private windows, every request asks again and nothing is kept.
+    func decidePermission(_ kind: SitePermissionKind, site: String) async -> Bool {
+        if let stored = try? await sitePermissions?.sitePermission(kind, site: site) { return stored }
+        let answer = await dialogs?.askPermission(kind, for: site) ?? .notNow
+        if answer != .notNow {
+            try? await sitePermissions?.setSitePermission(kind, site: site, allowed: answer == .allow)
+        }
+        return answer == .allow
     }
 
     func offerSavedLogins(on tab: Tab, origin: String) async {

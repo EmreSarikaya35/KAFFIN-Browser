@@ -89,7 +89,7 @@ public final class TabManager {
             Task { tab.favicon = await favicons.cached(host: key) }
         }
         if let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
-            tabs.insert(tab, at: selectedIndex + 1)
+            tabs.insert(tab, at: max(selectedIndex + 1, pinnedCount))
         } else {
             tabs.append(tab)
         }
@@ -136,7 +136,7 @@ public final class TabManager {
     public func closeOthers(than id: Tab.ID) {
         guard tabs.contains(where: { $0.id == id }) else { return }
         select(id)
-        tabs.filter { $0.id != id }.forEach { close($0.id) }
+        tabs.filter { $0.id != id && !$0.isPinned }.forEach { close($0.id) }
     }
 
     /// Reopens by URL only; closed tabs keep no back/forward history yet.
@@ -151,11 +151,35 @@ public final class TabManager {
         newTab(url: url)
     }
 
+    private var pinnedCount: Int {
+        tabs.prefix { $0.isPinned }.count
+    }
+
+    /// The positions a tab may take: pinned tabs stay before all others.
+    public func moveRange(of tab: Tab) -> ClosedRange<Int> {
+        tab.isPinned ? 0...max(0, pinnedCount - 1) : pinnedCount...max(pinnedCount, tabs.count - 1)
+    }
+
     public func move(_ id: Tab.ID, to index: Int) {
         guard let from = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let range = moveRange(of: tabs[from])
         let tab = tabs.remove(at: from)
-        tabs.insert(tab, at: min(index, tabs.count))
+        tabs.insert(tab, at: min(range.upperBound, max(range.lowerBound, index)))
         onChange?()
+    }
+
+    public func togglePin(_ id: Tab.ID) {
+        guard let from = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let tab = tabs.remove(at: from)
+        tab.isPinned.toggle()
+        tabs.insert(tab, at: pinnedCount)
+        onChange?()
+    }
+
+    public func toggleMute(_ id: Tab.ID) async {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        tab.isMuted.toggle()
+        await TabAudioMuter.apply(muted: tab.isMuted, to: tab.webView)
     }
 
     public func selectTab(at index: Int) {
@@ -219,6 +243,9 @@ public final class TabManager {
     }
 
     func handleLoadFinished(of tab: Tab) {
+        if tab.isMuted {
+            Task { await TabAudioMuter.apply(muted: true, to: tab.webView) }
+        }
         if !tab.isShowingError, let url = tab.webView.url {
             onPageVisit?(url, tab.webView.title)
             Task { await loadFavicon(for: tab, url: url) }

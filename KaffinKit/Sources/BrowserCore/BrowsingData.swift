@@ -56,12 +56,14 @@ public struct SessionTab: Sendable, Equatable {
     public let isSelected: Bool
     /// WebKit's opaque back/forward and scroll state.
     public let interactionState: Data?
+    public let isPinned: Bool
 
-    public init(url: URL, title: String?, isSelected: Bool, interactionState: Data?) {
+    public init(url: URL, title: String?, isSelected: Bool, interactionState: Data?, isPinned: Bool = false) {
         self.url = url
         self.title = title
         self.isSelected = isSelected
         self.interactionState = interactionState
+        self.isPinned = isPinned
     }
 }
 

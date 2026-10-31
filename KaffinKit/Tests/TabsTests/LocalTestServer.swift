@@ -61,6 +61,8 @@ final class LocalTestServer: @unchecked Sendable {
             })
         default:
             let html = switch path {
+            case "/media", "/media?next":
+                "<!doctype html><title>Media</title><audio id=a></audio><audio id=pageMuted muted></audio>"
             case "/iconpage":
                 "<!doctype html><title>Icon</title><link rel=icon href=/icon.png><p>ok"
             case "/login":

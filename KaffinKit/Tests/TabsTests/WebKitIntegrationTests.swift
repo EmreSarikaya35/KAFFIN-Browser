@@ -166,6 +166,48 @@ struct WebKitIntegrationTests {
         #expect(!server.requestedPaths.contains("/icon.png"))
     }
 
+    private func audioMuted(_ tab: Tab, _ selector: String = "#a") async throws -> Bool? {
+        try await tab.webView.evaluateJavaScript("document.querySelector('\(selector)').muted") as? Bool
+    }
+
+    @Test func mutingSilencesExistingMediaAndUnmuteRestoresIt() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "media"))
+        try await wait("page") { tab.title == "Media" && !tab.isLoading }
+
+        await manager.toggleMute(tab.id)
+        #expect(tab.isMuted)
+        #expect(try await audioMuted(tab) == true)
+
+        await manager.toggleMute(tab.id)
+        #expect(!tab.isMuted)
+        #expect(try await audioMuted(tab) == false)
+    }
+
+    @Test func unmuteLeavesMediaThePageMutedItself() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "media"))
+        try await wait("page") { tab.title == "Media" && !tab.isLoading }
+
+        await manager.toggleMute(tab.id)
+        await manager.toggleMute(tab.id)
+        #expect(try await audioMuted(tab, "#pageMuted") == true)
+    }
+
+    @Test func muteCarriesOverToNextPage() async throws {
+        let server = try await LocalTestServer()
+        let tab = manager.newTab(url: server.baseURL.appending(path: "media"))
+        try await wait("page") { tab.title == "Media" && !tab.isLoading }
+        await manager.toggleMute(tab.id)
+
+        tab.load(URL(string: "\(server.baseURL.absoluteString)/media?next")!)
+        try await wait("next page muted") {
+            tab.url?.query() == "next" && !tab.isLoading
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(try await audioMuted(tab) == true)
+    }
+
     private func makeLoginManager(store: InMemoryCredentialStore) -> TabManager {
         TabManager(factory: WebViewFactory(profileID: UUID()), downloads: downloads, credentials: store)
     }

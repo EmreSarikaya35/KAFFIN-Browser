@@ -64,6 +64,11 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
             }
             try db.create(index: "historyURLs_on_host", on: "historyURLs", columns: ["host"])
         }
+        migrator.registerMigration("v4") { db in
+            try db.alter(table: "sessionTabs") { t in
+                t.add(column: "isPinned", .boolean).notNull().defaults(to: false)
+            }
+        }
         return migrator
     }
 
@@ -237,10 +242,13 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
             for (position, tab) in window.tabs.enumerated() {
                 try db.execute(
                     sql: """
-                    INSERT INTO sessionTabs (windowIndex, position, url, title, isSelected, interactionState)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO sessionTabs (windowIndex, position, url, title, isSelected, interactionState, isPinned)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    arguments: [windowIndex, position, tab.url.absoluteString, tab.title, tab.isSelected, tab.interactionState]
+                    arguments: [
+                        windowIndex, position, tab.url.absoluteString, tab.title,
+                        tab.isSelected, tab.interactionState, tab.isPinned,
+                    ]
                 )
             }
         }
@@ -255,7 +263,8 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
                     url: url,
                     title: row["title"],
                     isSelected: row["isSelected"],
-                    interactionState: row["interactionState"]
+                    interactionState: row["interactionState"],
+                    isPinned: row["isPinned"]
                 )
                 windows[row["windowIndex"], default: []].append(tab)
             }

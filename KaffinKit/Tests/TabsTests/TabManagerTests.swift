@@ -213,6 +213,77 @@ struct TabManagerTests {
         #expect(manager.snapshot().tabs.first?.interactionState != nil)
     }
 
+    @Test func pinnedTabsStayFirstInPinOrder() {
+        let manager = makeManager()
+        let first = manager.newTab()
+        let second = manager.newTab()
+        let third = manager.newTab()
+
+        manager.togglePin(third.id)
+        manager.togglePin(second.id)
+        #expect(manager.tabs.map(\.id) == [third.id, second.id, first.id])
+        #expect(third.isPinned && second.isPinned && !first.isPinned)
+    }
+
+    @Test func unpinnedTabReturnsToStartOfNormalTabs() {
+        let manager = makeManager()
+        let first = manager.newTab()
+        let second = manager.newTab()
+        let third = manager.newTab()
+        manager.togglePin(first.id)
+        manager.togglePin(second.id)
+
+        manager.togglePin(first.id)
+        #expect(manager.tabs.map(\.id) == [second.id, first.id, third.id])
+    }
+
+    @Test func newTabsNeverLandAmongPinnedTabs() {
+        let manager = makeManager()
+        let first = manager.newTab()
+        let second = manager.newTab()
+        manager.togglePin(first.id)
+        manager.togglePin(second.id)
+        manager.select(first.id)
+
+        let added = manager.newTab()
+        #expect(manager.tabs.last?.id == added.id)
+    }
+
+    @Test func tabsCannotBeMovedAcrossPinnedBoundary() {
+        let manager = makeManager()
+        let pinned = manager.newTab()
+        let normal = manager.newTab()
+        manager.togglePin(pinned.id)
+
+        manager.move(normal.id, to: 0)
+        #expect(manager.tabs.map(\.id) == [pinned.id, normal.id])
+        manager.move(pinned.id, to: 1)
+        #expect(manager.tabs.map(\.id) == [pinned.id, normal.id])
+    }
+
+    @Test func closeOthersKeepsPinnedTabs() {
+        let manager = makeManager()
+        let pinned = manager.newTab()
+        let kept = manager.newTab()
+        _ = manager.newTab()
+        manager.togglePin(pinned.id)
+
+        manager.closeOthers(than: kept.id)
+        #expect(manager.tabs.map(\.id) == [pinned.id, kept.id])
+    }
+
+    @Test func pinnedStateSurvivesSession() {
+        let manager = makeManager()
+        manager.restore(SessionWindow(tabs: [
+            SessionTab(url: URL(string: "about:blank#a")!, title: nil, isSelected: true, interactionState: nil, isPinned: true),
+            SessionTab(url: URL(string: "about:blank#b")!, title: nil, isSelected: false, interactionState: nil),
+        ]))
+
+        #expect(manager.tabs[0].isPinned)
+        #expect(!manager.tabs[1].isPinned)
+        #expect(manager.snapshot().tabs.map(\.isPinned) == [true, false])
+    }
+
     private func waitForURL(of tab: Tab) async throws {
         for _ in 0..<100 where tab.url == nil {
             try await Task.sleep(for: .milliseconds(20))

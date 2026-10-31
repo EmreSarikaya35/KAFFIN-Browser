@@ -101,7 +101,7 @@ struct ProfileDatabaseTests {
         let windows = [
             SessionWindow(tabs: [
                 SessionTab(url: example, title: "A", isSelected: false, interactionState: state),
-                SessionTab(url: other, title: nil, isSelected: true, interactionState: nil),
+                SessionTab(url: other, title: nil, isSelected: true, interactionState: nil, isPinned: true),
             ]),
             SessionWindow(tabs: [SessionTab(url: other, title: "B", isSelected: true, interactionState: nil)]),
         ]

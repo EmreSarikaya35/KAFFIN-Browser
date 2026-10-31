@@ -284,7 +284,7 @@ private struct TabStripView: View {
         return TabDragLayout.offset(
             start: drag.startIndex,
             current: index,
-            count: tabManager.tabs.count,
+            range: tabManager.moveRange(of: tab),
             translation: drag.translation,
             tabWidth: drag.tabWidth
         )
@@ -300,7 +300,7 @@ private struct TabStripView: View {
         guard let drag else { return }
         let target = TabDragLayout.targetIndex(
             start: drag.startIndex,
-            count: tabManager.tabs.count,
+            range: tabManager.moveRange(of: tab),
             translation: translation,
             tabWidth: drag.tabWidth
         )
@@ -321,6 +321,7 @@ private struct TabItemView: View {
     @State private var width: CGFloat = 0
 
     private var isSelected: Bool { tab.id == tabManager.selectedTabID }
+    private var title: String { tab.title ?? tab.url?.host() ?? L10n.string("tab.new") }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -331,21 +332,36 @@ private struct TabItemView: View {
             } else {
                 Image(systemName: "globe").font(.system(size: 12)).foregroundStyle(.secondary)
             }
-            Text(tab.title ?? tab.url?.host() ?? L10n.string("tab.new"))
-                .lineLimit(1)
-                .font(.system(size: 12))
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button {
-                tabManager.close(tab.id)
-            } label: {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).frame(width: 16, height: 16)
+            if !tab.isPinned {
+                Text(title)
+                    .lineLimit(1)
+                    .font(.system(size: 12))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(L10n.string("tab.close"))
+            if tab.isMuted {
+                Button {
+                    Task { await tabManager.toggleMute(tab.id) }
+                } label: {
+                    Image(systemName: "speaker.slash.fill").font(.system(size: 10))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(L10n.string("tab.unmute"))
+            }
+            if !tab.isPinned {
+                Button {
+                    tabManager.close(tab.id)
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).frame(width: 16, height: 16)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(L10n.string("tab.close"))
+            }
         }
         .padding(.horizontal, 10)
-        .frame(minWidth: 44, maxWidth: 240)
+        .frame(minWidth: 44, maxWidth: tab.isPinned ? 44 : 240)
+        .fixedSize(horizontal: tab.isPinned, vertical: false)
         .frame(height: 34)
+        .accessibilityLabel(title)
         .background(
             isSelected ? ChromePalette.toolbar : .clear,
             in: UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8)
@@ -369,6 +385,10 @@ private struct TabItemView: View {
             Button(L10n.string("tab.reload")) { tab.webView.reload() }
             Button(L10n.string("tab.duplicate")) { tabManager.duplicate(tab.id) }
                 .disabled(tab.url == nil)
+            Button(L10n.string(tab.isPinned ? "tab.unpin" : "tab.pin")) { tabManager.togglePin(tab.id) }
+            Button(L10n.string(tab.isMuted ? "tab.unmute" : "tab.mute")) {
+                Task { await tabManager.toggleMute(tab.id) }
+            }
             Divider()
             Button(L10n.string("tab.close")) { tabManager.close(tab.id) }
             Button(L10n.string("tab.closeOthers")) { tabManager.closeOthers(than: tab.id) }

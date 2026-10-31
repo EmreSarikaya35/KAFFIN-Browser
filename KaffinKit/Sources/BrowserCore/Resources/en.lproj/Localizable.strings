@@ -1,4 +1,8 @@
 "tab.new" = "New Tab";
+"tab.pin" = "Pin Tab";
+"tab.unpin" = "Unpin Tab";
+"tab.mute" = "Mute Tab";
+"tab.unmute" = "Unmute Tab";
 "suggestion.search" = "%@ Search";
 "error.title" = "This page could not be opened";
 "downloads.title" = "Downloads";

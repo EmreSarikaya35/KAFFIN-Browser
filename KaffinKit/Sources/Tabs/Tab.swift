@@ -19,6 +19,8 @@ public final class Tab: Identifiable {
     public internal(set) var loginPrompt: LoginPrompt?
     /// PNG data of the site's icon.
     public internal(set) var favicon: Data?
+    public internal(set) var isPinned = false
+    public internal(set) var isMuted = false
     @ObservationIgnored var faviconHost: String?
 
     var loginOrigin: String? { LoginOrigin.make(from: webView.url) }
@@ -34,6 +36,7 @@ public final class Tab: Identifiable {
         self.webView = webView
         self.state = state
         pending = session
+        isPinned = session?.isPinned ?? false
         title = session?.title
         url = session?.url
         observations = [
@@ -91,6 +94,6 @@ public final class Tab: Identifiable {
         guard let url else { return nil }
         // WebKit documents the value as opaque; a test pins that it is Data on the supported macOS.
         let state = pending?.interactionState ?? webView.interactionState as? Data
-        return SessionTab(url: url, title: title, isSelected: isSelected, interactionState: state)
+        return SessionTab(url: url, title: title, isSelected: isSelected, interactionState: state, isPinned: isPinned)
     }
 }

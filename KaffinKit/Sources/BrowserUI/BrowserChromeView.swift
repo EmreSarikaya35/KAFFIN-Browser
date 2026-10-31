@@ -16,6 +16,7 @@ public struct BrowserChromeView: View {
     let onSubmit: (String) -> Void
 
     @State private var isShowingDownloads = false
+    @Environment(\.controlActiveState) private var activeState
 
     public init(
         tabManager: TabManager,
@@ -64,6 +65,10 @@ public struct BrowserChromeView: View {
             }
             .popover(isPresented: $isShowingDownloads, arrowEdge: .bottom) {
                 DownloadsView(downloads: downloads)
+            }
+            // Downloads are shared by all windows, so only the focused one reacts.
+            .onChange(of: downloads.items.count) { old, new in
+                if new > old, activeState == .key { isShowingDownloads = true }
             }
             mainMenu
         }

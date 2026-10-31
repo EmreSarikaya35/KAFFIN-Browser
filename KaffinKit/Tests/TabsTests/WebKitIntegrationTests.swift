@@ -57,6 +57,44 @@ struct WebKitIntegrationTests {
         #expect(FileManager.default.contents(atPath: folder.appending(path: "report.bin").path(percentEncoded: false))?.count == 2048)
     }
 
+    @Test func fileCreatedDuringDownloadIsNotOverwritten() async throws {
+        let server = try await LocalTestServer()
+        manager.newTab(url: server.baseURL.appending(path: "slow"))
+        try await wait("download started") { !downloads.items.isEmpty }
+
+        let existing = folder.appending(path: "report.bin")
+        try Data("mine".utf8).write(to: existing)
+        try await wait("download finished") { downloads.items.first?.state == .finished }
+
+        #expect(FileManager.default.contents(atPath: existing.path(percentEncoded: false)) == Data("mine".utf8))
+        #expect(downloads.items.first?.fileName == "report (1).bin")
+        #expect(downloads.items.first?.destination == folder.appending(path: "report (1).bin"))
+    }
+
+    @Test func finishedDownloadIsQuarantinedAndLeavesNoStagingFolder() async throws {
+        let server = try await LocalTestServer()
+        manager.newTab(url: server.baseURL.appending(path: "file"))
+        try await wait("download finished") { downloads.items.first?.state == .finished }
+
+        let file = try #require(downloads.items.first?.destination)
+        let values = try file.resourceValues(forKeys: [.quarantinePropertiesKey])
+        #expect(values.quarantineProperties != nil)
+        let staging = try FileManager.default.contentsOfDirectory(at: DownloadManager.stagingRoot, includingPropertiesForKeys: nil)
+        #expect(staging.isEmpty)
+    }
+
+    @Test func cancelledDownloadLeavesNoFile() async throws {
+        let server = try await LocalTestServer()
+        manager.newTab(url: server.baseURL.appending(path: "slow"))
+        try await wait("download started") { downloads.items.first?.fileName == "report.bin" }
+
+        let item = try #require(downloads.items.first)
+        downloads.cancel(item)
+        #expect(item.state == .cancelled)
+        try await Task.sleep(for: .milliseconds(1200))
+        #expect(!FileManager.default.fileExists(atPath: folder.appending(path: "report.bin").path(percentEncoded: false)))
+    }
+
     @Test func refusedConnectionShowsErrorPageAndRecordsNoVisit() async throws {
         var visits = 0
         var titles: [String] = []

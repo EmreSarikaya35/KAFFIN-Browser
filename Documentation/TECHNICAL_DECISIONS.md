@@ -32,6 +32,14 @@ File paths passed to SQLite or `FileManager` must use `path(percentEncoded: fals
 
 Only the default profile exists so far, so the application database and folder tables from the plan are not created yet.
 
+## Downloads in the sandbox
+
+WebKit's network process cannot write to `~/Downloads` under App Sandbox. The download stalls with no error, and no sandbox denial is logged for the file. Downloads are staged in the container, marked with `com.apple.quarantine`, then moved by the app, which holds the Downloads entitlement. Verified in the sandboxed Release app on macOS 27.0.1.
+
+## Open sandbox question
+
+The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.
+
 ## Signing
 
 Debug builds are ad hoc signed without the hardened runtime flag, which Xcode omits for that configuration. Release builds carry it (`flags=0x10002(adhoc,runtime)`) and launch under the sandbox. Developer ID signing is unverified until Phase 8.

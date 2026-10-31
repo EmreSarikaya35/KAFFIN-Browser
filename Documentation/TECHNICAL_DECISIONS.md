@@ -58,6 +58,10 @@ History is grouped by site, with `www.` removed, and visits add up across pages,
 
 The tab strip fills the titlebar area, so the chrome's hosting view uses `safeAreaRegions = []`. Otherwise SwiftUI pushes the content down by the titlebar's safe area, past the height constraint and over the top of the page. Verified with a numbered ruler page, with the bookmarks bar off and toggled on live.
 
+## Bookmark files
+
+Import and export use the Netscape bookmark HTML format. The file is outside data: only http and https addresses are kept, nesting is capped at 32 levels, and files over 50 MB are refused. Import runs in one transaction, skips addresses already saved, and merges folders with the same name and parent. Chrome's bookmarks bar folder maps to the KAFFIN bar root.
+
 ## Open sandbox question
 
 The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.

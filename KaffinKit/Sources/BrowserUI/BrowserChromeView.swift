@@ -200,40 +200,6 @@ private struct TabDrag {
     var tabWidth: CGFloat
 }
 
-private struct BookmarksBarView: View {
-    let bookmarks: BookmarksModel
-    let onOpen: (BookmarkItem) -> Void
-
-    var body: some View {
-        HStack(spacing: 2) {
-            if bookmarks.items.isEmpty {
-                Text(L10n.string("bookmark.empty"))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-            }
-            ForEach(bookmarks.items) { item in
-                Button {
-                    onOpen(item)
-                } label: {
-                    Text(item.title).font(.system(size: 12)).lineLimit(1).frame(maxWidth: 160)
-                }
-                .buttonStyle(.borderless)
-                .padding(.horizontal, 6)
-                .contextMenu {
-                    Button(L10n.string("bookmark.remove")) {
-                        Task { await bookmarks.remove(item) }
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .frame(height: BrowserChromeView.bookmarksBarHeight)
-        .background(ChromePalette.toolbar)
-    }
-}
-
 private struct TabStripView: View {
     let tabManager: TabManager
     let isPrivate: Bool

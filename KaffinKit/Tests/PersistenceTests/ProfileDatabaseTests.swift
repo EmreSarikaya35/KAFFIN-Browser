@@ -152,6 +152,92 @@ struct ProfileDatabaseTests {
         #expect(sites.map(\.host) == ["youtube.com"])
     }
 
+    @Test func treeNestsFoldersAndKeepsLooseBookmarksAtRoot() async throws {
+        let db = try ProfileDatabase.inMemory()
+        let folder = try await db.addFolder(title: "İş", parent: nil)
+        let inner = try await db.addFolder(title: "Alt", parent: folder)
+        try await db.addBookmark(url: example, title: "Loose")
+        try await db.addBookmark(url: other, title: "Filed")
+        try await db.moveBookmark(url: other, to: inner)
+
+        let tree = try await db.bookmarkTree()
+        #expect(tree.items.map(\.title) == ["Loose"])
+        #expect(tree.folders.map(\.title) == ["İş"])
+        #expect(tree.folders[0].folders[0].items.map(\.title) == ["Filed"])
+    }
+
+    @Test func bookmarksKeepsListingEveryBookmarkForSearch() async throws {
+        let db = try ProfileDatabase.inMemory()
+        let folder = try await db.addFolder(title: "F", parent: nil)
+        try await db.addBookmark(url: other, title: "Filed")
+        try await db.moveBookmark(url: other, to: folder)
+        #expect(try await db.bookmarks().map(\.title) == ["Filed"])
+    }
+
+    @Test func renamingAndDeletingFolderReachesItsContents() async throws {
+        let db = try ProfileDatabase.inMemory()
+        let folder = try await db.addFolder(title: "Old", parent: nil)
+        let inner = try await db.addFolder(title: "Inner", parent: folder)
+        try await db.addBookmark(url: other, title: "Filed")
+        try await db.moveBookmark(url: other, to: inner)
+
+        try await db.renameFolder(folder, to: "New")
+        #expect(try await db.bookmarkTree().folders.map(\.title) == ["New"])
+
+        try await db.deleteFolder(folder)
+        #expect(try await db.bookmarkTree().folders.isEmpty)
+        #expect(try await db.bookmarks().isEmpty)
+    }
+
+    @Test func importAddsNewSkipsDuplicatesAndMergesFolders() async throws {
+        let db = try ProfileDatabase.inMemory()
+        try await db.addBookmark(url: example, title: "Already Here")
+        _ = try await db.addFolder(title: "İş", parent: nil)
+
+        let result = try await db.importBookmarks(BookmarkTree(
+            items: [BookmarkItem(url: example, title: "Duplicate")],
+            folders: [
+                BookmarkTree(title: "İş", items: [BookmarkItem(url: other, title: "New")]),
+            ]
+        ))
+
+        #expect(result == BookmarkImportResult(added: 1, skipped: 1))
+        let tree = try await db.bookmarkTree()
+        #expect(tree.items.map(\.title) == ["Already Here"])
+        #expect(tree.folders.count == 1)
+        #expect(tree.folders[0].items.map(\.title) == ["New"])
+    }
+
+    @Test func bookmarksFromBeforeFoldersStayAtRoot() async throws {
+        let path = FileManager.default.temporaryDirectory.appending(path: "kaffin-\(UUID()).sqlite").path(percentEncoded: false)
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let queue = try DatabaseQueue(path: path)
+        try ProfileDatabase.migrator.migrate(queue, upTo: "v4")
+        try await queue.write { db in
+            try db.execute(sql: "INSERT INTO bookmarks (url, title) VALUES (?, ?)", arguments: ["https://swift.org/", "Swift"])
+        }
+        try queue.close()
+
+        #expect(try await ProfileDatabase(path: path).bookmarkTree().items.map(\.title) == ["Swift"])
+    }
+
+    @Test func largeBookmarkLibraryLoadsQuickly() async throws {
+        let folders = (0..<500).map { folder in
+            BookmarkTree(title: "Folder \(folder)", items: (0..<40).map {
+                BookmarkItem(url: URL(string: "https://site\(folder).example/\($0)")!, title: "Page \($0)")
+            })
+        }
+        let db = try ProfileDatabase.inMemory()
+        #expect(try await db.importBookmarks(BookmarkTree(folders: folders)).added == 20000)
+
+        let start = ContinuousClock.now
+        let tree = try await db.bookmarkTree()
+        let elapsed = ContinuousClock.now - start
+
+        #expect(tree.folders.count == 500)
+        #expect(elapsed < .seconds(2), "Took \(elapsed)")
+    }
+
     @Test func faviconsPersistByHost() async throws {
         let db = try ProfileDatabase.inMemory()
         try await db.saveFavicon(host: "example.com", data: Data([1]))
@@ -302,6 +388,21 @@ struct SuggestionsModelTests {
 
 @MainActor
 struct BookmarksModelTests {
+    @Test func treeFollowsFolderChanges() async throws {
+        let db = try ProfileDatabase.inMemory()
+        let model = BookmarksModel(store: db)
+        let url = URL(string: "https://example.com/a")!
+        await model.toggle(url: url, title: "A")
+        await model.createFolder(title: "Folder", parent: nil)
+
+        let folder = try #require(model.tree.folders.first?.id)
+        await model.move(BookmarkItem(url: url, title: "A"), to: folder)
+
+        #expect(model.tree.items.isEmpty)
+        #expect(model.tree.folders[0].items.map(\.title) == ["A"])
+        #expect(model.contains(url), "A filed bookmark still counts as bookmarked")
+    }
+
     @Test func toggleAddsThenRemovesAndUsesHostWhenUntitled() async throws {
         let model = BookmarksModel(store: try ProfileDatabase.inMemory())
         let url = URL(string: "https://example.com/a")!

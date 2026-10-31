@@ -69,6 +69,16 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
                 t.add(column: "isPinned", .boolean).notNull().defaults(to: false)
             }
         }
+        migrator.registerMigration("v5") { db in
+            try db.create(table: "bookmarkFolders") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("title", .text).notNull()
+                t.belongsTo("parent", inTable: "bookmarkFolders", onDelete: .cascade)
+            }
+            try db.alter(table: "bookmarks") { t in
+                t.add(column: "folderId", .integer).references("bookmarkFolders", onDelete: .cascade)
+            }
+        }
         return migrator
     }
 
@@ -208,6 +218,85 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
             try Row.fetchAll(db, sql: "SELECT url, title FROM bookmarks ORDER BY id").compactMap { row in
                 URL(string: row["url"]).map { BookmarkItem(url: $0, title: row["title"]) }
             }
+        }
+    }
+
+    public func bookmarkTree() async throws -> BookmarkTree {
+        try await writer.read { db in
+            // Grouped first, so a large library is not rescanned once per folder.
+            let folders = Dictionary(
+                grouping: try Row.fetchAll(db, sql: "SELECT id, title, parentId FROM bookmarkFolders ORDER BY id")
+            ) { row -> Int64? in row["parentId"] }
+            let bookmarks = Dictionary(
+                grouping: try Row.fetchAll(db, sql: "SELECT url, title, folderId FROM bookmarks ORDER BY id")
+            ) { row -> Int64? in row["folderId"] }
+
+            func node(id: Int64?, title: String) -> BookmarkTree {
+                let items = (bookmarks[id] ?? []).compactMap { row -> BookmarkItem? in
+                    URL(string: row["url"]).map { BookmarkItem(url: $0, title: row["title"]) }
+                }
+                let children = (folders[id] ?? []).map { node(id: $0["id"], title: $0["title"]) }
+                return BookmarkTree(id: id, title: title, items: items, folders: children)
+            }
+            return node(id: nil, title: "")
+        }
+    }
+
+    public func addFolder(title: String, parent: Int64?) async throws -> Int64 {
+        try await writer.write { db in
+            try Self.insertFolder(title: title, parent: parent, in: db)
+        }
+    }
+
+    private static func insertFolder(title: String, parent: Int64?, in db: Database) throws -> Int64 {
+        try db.execute(sql: "INSERT INTO bookmarkFolders (title, parentId) VALUES (?, ?)", arguments: [title, parent])
+        return db.lastInsertedRowID
+    }
+
+    public func renameFolder(_ id: Int64, to title: String) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "UPDATE bookmarkFolders SET title = ? WHERE id = ?", arguments: [title, id])
+        }
+    }
+
+    /// Removes the folder, its subfolders and their bookmarks.
+    public func deleteFolder(_ id: Int64) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "DELETE FROM bookmarkFolders WHERE id = ?", arguments: [id])
+        }
+    }
+
+    public func moveBookmark(url: URL, to folder: Int64) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "UPDATE bookmarks SET folderId = ? WHERE url = ?", arguments: [folder, url.absoluteString])
+        }
+    }
+
+    /// All or nothing, so a failed import leaves no half-copied folders. Existing addresses are kept as they are.
+    public func importBookmarks(_ tree: BookmarkTree) async throws -> BookmarkImportResult {
+        try await writer.write { db in
+            var added = 0
+            var skipped = 0
+
+            func insert(_ tree: BookmarkTree, into folder: Int64?) throws {
+                for item in tree.items {
+                    try db.execute(
+                        sql: "INSERT INTO bookmarks (url, title, folderId) VALUES (?, ?, ?) ON CONFLICT(url) DO NOTHING",
+                        arguments: [item.url.absoluteString, item.title, folder]
+                    )
+                    if db.changesCount > 0 { added += 1 } else { skipped += 1 }
+                }
+                for child in tree.folders {
+                    let existing = try Int64.fetchOne(
+                        db,
+                        sql: "SELECT id FROM bookmarkFolders WHERE title = ? AND parentId IS ?",
+                        arguments: [child.title, folder]
+                    )
+                    try insert(child, into: existing ?? Self.insertFolder(title: child.title, parent: folder, in: db))
+                }
+            }
+            try insert(tree, into: nil)
+            return BookmarkImportResult(added: added, skipped: skipped)
         }
     }
 

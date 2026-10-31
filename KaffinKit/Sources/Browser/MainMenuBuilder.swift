@@ -18,6 +18,11 @@ enum MainMenuBuilder {
         let settings = item("menu.settings", #selector(WindowManager.showSettings(_:)), ",")
         settings.target = windowManager
 
+        let importBookmarks = item("bookmark.import", #selector(WindowManager.importBookmarks(_:)), "")
+        importBookmarks.target = windowManager
+        let exportBookmarks = item("bookmark.export", #selector(WindowManager.exportBookmarks(_:)), "")
+        exportBookmarks.target = windowManager
+
         let mainMenu = NSMenu()
         for menu in [
             menu("KAFFIN", [
@@ -66,6 +71,9 @@ enum MainMenuBuilder {
             menu(L10n.string("menu.bookmarks"), [
                 item("bookmark.add", #selector(BrowserWindowController.toggleBookmark(_:)), "d"),
                 item("bookmark.toggleBar", #selector(BrowserWindowController.toggleBookmarksBar(_:)), "B"),
+                .separator(),
+                importBookmarks,
+                exportBookmarks,
             ]),
             windowMenu(),
         ] {

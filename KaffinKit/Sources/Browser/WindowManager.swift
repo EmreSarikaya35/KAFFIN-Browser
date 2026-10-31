@@ -6,11 +6,13 @@ import OSLog
 import Persistence
 import SwiftUI
 import Tabs
+import UniformTypeIdentifiers
 
 /// Entry point for the app target: owns the browser windows, the menu bar and profile data.
 @MainActor
 public final class WindowManager: NSObject {
     private static let logger = Logger(subsystem: "com.kaffin.browser", category: "WindowManager")
+    private static let maximumBookmarkFileSize = 50_000_000
 
     private let factory = WebViewFactory()
     private let database = WindowManager.openDatabase()
@@ -236,6 +238,58 @@ public final class WindowManager: NSObject {
 
     @objc func showSettings(_ sender: Any?) {
         presentSettings(.general)
+    }
+
+    @objc func importBookmarks(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.html]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { await importBookmarks(from: url) }
+    }
+
+    private func importBookmarks(from url: URL) async {
+        guard let database else {
+            showAlert(L10n.string("bookmark.importFailed"))
+            return
+        }
+        do {
+            guard try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0 <= Self.maximumBookmarkFileSize else {
+                showAlert(L10n.string("bookmark.importTooLarge"))
+                return
+            }
+            let data = try Data(contentsOf: url)
+            let tree = BookmarkFile.parse(String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self))
+            guard !tree.items.isEmpty || !tree.folders.isEmpty else {
+                showAlert(L10n.string("bookmark.importEmpty"))
+                return
+            }
+            let result = try await database.importBookmarks(tree)
+            await bookmarks.reload()
+            bookmarks.isBarVisible = true
+            showAlert(String(format: L10n.string("bookmark.importDone"), result.added, result.skipped))
+        } catch {
+            Self.logger.error("Could not import bookmarks: \(error.localizedDescription)")
+            showAlert(L10n.string("bookmark.importFailed"))
+        }
+    }
+
+    @objc func exportBookmarks(_ sender: Any?) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "bookmarks.html"
+        panel.allowedContentTypes = [.html]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try BookmarkFile.export(bookmarks.tree).write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            Self.logger.error("Could not export bookmarks: \(error.localizedDescription)")
+            showAlert(L10n.string("bookmark.exportFailed"))
+        }
+    }
+
+    private func showAlert(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.runModal()
     }
 
     @objc func setAsDefaultBrowser(_ sender: Any?) {

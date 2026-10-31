@@ -107,6 +107,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard let content = window.contentView else { return }
         chromeHost = NSHostingView(rootView: makeChromeView())
         chromeHost.translatesAutoresizingMaskIntoConstraints = false
+        // The tab strip fills the titlebar area. Respecting its safe area would push the
+        // chrome past its height constraint and over the top of the page.
+        chromeHost.safeAreaRegions = []
         chromeHeight = chromeHost.heightAnchor.constraint(equalToConstant: BrowserChromeView.height)
         webContainer.translatesAutoresizingMaskIntoConstraints = false
         newTabHost = NSHostingView(rootView: NewTabView(search: search) { [weak self] in self?.submitAddress($0) })

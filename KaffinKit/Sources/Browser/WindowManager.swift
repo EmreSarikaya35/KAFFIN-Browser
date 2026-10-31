@@ -18,6 +18,8 @@ public final class WindowManager: NSObject {
     private var controllers: [BrowserWindowController] = []
     private var historyWindow: NSWindow?
     private var saveTask: Task<Void, Never>?
+    private var isStarted = false
+    private var pendingURLs: [URL] = []
     private let downloads = DownloadManager()
     private let search = SearchSettings()
     private let credentials = KeychainCredentialStore(profileID: WebViewFactory.defaultProfileID)
@@ -32,8 +34,11 @@ public final class WindowManager: NSObject {
         Task {
             await bookmarks.reload()
             let session = await loadSession()
-            if session.isEmpty { openWindow() }
+            if session.isEmpty, pendingURLs.isEmpty { openWindow() }
             session.forEach { openWindow(session: $0) }
+            isStarted = true
+            pendingURLs.forEach(openInFrontWindow)
+            pendingURLs = []
         }
     }
 
@@ -119,8 +124,13 @@ public final class WindowManager: NSObject {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// A link that launches the app arrives before the session loads, so it waits to join the restored windows.
     public func openURLs(_ urls: [URL]) {
-        urls.forEach(openInFrontWindow)
+        if isStarted {
+            urls.forEach(openInFrontWindow)
+        } else {
+            pendingURLs += urls
+        }
     }
 
     private func openInFrontWindow(_ url: URL) {

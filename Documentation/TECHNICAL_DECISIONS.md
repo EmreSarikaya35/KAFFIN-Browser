@@ -54,6 +54,10 @@ WebKit has no favicon API. Declared icons are read in the default client world, 
 
 History is grouped by site, with `www.` removed, and visits add up across pages, so a site's many pages count toward it. Enter opens the top site row only while the field still holds the typed text or its completion. After a deletion, no completion runs and Enter keeps the remaining text.
 
+## Chrome layout
+
+The tab strip fills the titlebar area, so the chrome's hosting view uses `safeAreaRegions = []`. Otherwise SwiftUI pushes the content down by the titlebar's safe area, past the height constraint and over the top of the page. Verified with a numbered ruler page, with the bookmarks bar off and toggled on live.
+
 ## Open sandbox question
 
 The sandboxed app is denied `mach-lookup com.apple.Safari.SafeBrowsing.Service`, so fraudulent website warnings may not work even though they are enabled. Check this in Phase 7 before claiming the feature.

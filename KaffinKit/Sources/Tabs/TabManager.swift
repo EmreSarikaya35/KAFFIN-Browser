@@ -41,6 +41,7 @@ public final class TabManager {
     @ObservationIgnored private let favicons: FaviconLoader?
     @ObservationIgnored private let sitePermissions: (any SitePermissionStoring)?
     @ObservationIgnored private lazy var loginBridge = LoginBridge(tabManager: self)
+    @ObservationIgnored private lazy var locationBridge = LocationBridge(tabManager: self)
 
     /// Without credentials, as in private windows, no login script runs at all.
     public init(
@@ -111,9 +112,10 @@ public final class TabManager {
         let webView = factory.makeWebView(configuration: configuration)
         webView.navigationDelegate = navigationManager
         webView.uiDelegate = navigationManager
-        // A popup's configuration comes from its opener, which already has the bridge.
-        if credentials != nil, configuration == nil {
-            loginBridge.install(on: webView.configuration.userContentController)
+        // A popup's configuration comes from its opener, which already has the bridges.
+        if configuration == nil {
+            locationBridge.install(on: webView.configuration.userContentController)
+            if credentials != nil { loginBridge.install(on: webView.configuration.userContentController) }
         }
         return webView
     }
@@ -185,6 +187,7 @@ public final class TabManager {
     public func adopt(_ tab: Tab) {
         tab.webView.navigationDelegate = navigationManager
         tab.webView.uiDelegate = navigationManager
+        locationBridge.takeOver(tab.webView.configuration.userContentController)
         if credentials != nil { loginBridge.takeOver(tab.webView.configuration.userContentController) }
         connectTitle(of: tab)
         tabs.insert(tab, at: tab.isPinned ? pinnedCount : tabs.count)

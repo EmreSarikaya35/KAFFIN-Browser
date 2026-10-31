@@ -1,5 +1,6 @@
 import AppKit
 import BrowserCore
+import CoreLocation
 import Foundation
 import Tabs
 
@@ -101,6 +102,10 @@ final class SheetPageDialogs: PageDialogPresenting {
             NSWorkspace.shared.open(url)
         }
         return false
+    }
+
+    func currentLocation() async -> CLLocation? {
+        await locationAccess.currentLocation()
     }
 
     func confirmOpening(_ url: URL, from site: String) async -> Bool {

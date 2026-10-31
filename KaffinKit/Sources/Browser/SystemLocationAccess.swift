@@ -8,6 +8,7 @@ import CoreLocation
 final class SystemLocationAccess: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var waiting: [CheckedContinuation<Bool, Never>] = []
+    private var reading: [CheckedContinuation<CLLocation?, Never>] = []
 
     override init() {
         super.init()
@@ -26,6 +27,28 @@ final class SystemLocationAccess: NSObject, CLLocationManagerDelegate {
             waiting.append(continuation)
             if waiting.count == 1 { manager.requestWhenInUseAuthorization() }
         }
+    }
+
+    func currentLocation() async -> CLLocation? {
+        await withCheckedContinuation { continuation in
+            reading.append(continuation)
+            if reading.count == 1 { manager.requestLocation() }
+        }
+    }
+
+    private func finishReading(_ location: CLLocation?) {
+        let continuations = reading
+        reading = []
+        continuations.forEach { $0.resume(returning: location) }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        let location = locations.last
+        Task { @MainActor in finishReading(location) }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        Task { @MainActor in finishReading(nil) }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {

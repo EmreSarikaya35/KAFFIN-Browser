@@ -1,4 +1,5 @@
 import BrowserCore
+import CoreLocation
 import Foundation
 import Testing
 import WebKit
@@ -555,10 +556,15 @@ struct WebKitIntegrationTests {
         var permissionRequests = 0
         var systemLocationAllowed = true
         var systemLocationChecks = 0
+        var location: CLLocation?
 
         func ensureSystemLocationAccess() async -> Bool {
             systemLocationChecks += 1
             return systemLocationAllowed
+        }
+
+        func currentLocation() async -> CLLocation? {
+            location
         }
 
         func askPermission(_ kind: SitePermissionKind, for site: String) async -> PermissionAnswer {
@@ -644,6 +650,50 @@ struct WebKitIntegrationTests {
 
         #expect(await manager.decidePermission(.camera, site: "https://meet.example"))
         #expect(dialogs.systemLocationChecks == 0)
+    }
+
+    private func pageLocationAnswer(_ dialogs: FakeDialogs) async throws -> String? {
+        let server = try await LocalTestServer()
+        var didLoad = false
+        manager.dialogs = dialogs
+        manager.onPageVisit = { _, _ in didLoad = true }
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("page load") { didLoad }
+        return try await tab.webView.callAsyncJavaScript("""
+        return await new Promise((done) => navigator.geolocation.getCurrentPosition(
+          (position) => done(`${position.coords.latitude},${position.coords.longitude},${position.coords.speed},${typeof window.webkit}`),
+          (error) => done(`error ${error.code}`)
+        ));
+        """, arguments: [:], contentWorld: .page) as? String
+    }
+
+    @Test func allowedPageReceivesTheLocation() async throws {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .allow
+        dialogs.location = CLLocation(latitude: 41.5, longitude: 29.25)
+
+        #expect(try await pageLocationAnswer(dialogs) == "41.5,29.25,null,undefined")
+    }
+
+    @Test func blockedPageGetsDeniedWithoutReadingTheLocation() async throws {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .block
+        dialogs.location = CLLocation(latitude: 41.5, longitude: 29.25)
+
+        #expect(try await pageLocationAnswer(dialogs) == "error 1")
+    }
+
+    @Test func missingFixIsReportedAsUnavailable() async throws {
+        let dialogs = FakeDialogs()
+        dialogs.permissionAnswer = .allow
+
+        #expect(try await pageLocationAnswer(dialogs) == "error 2")
+    }
+
+    @Test func locationOnlyReachesSecureSites() {
+        #expect(LocationBridge.isSecure(scheme: "https", host: "maps.google.com"))
+        #expect(LocationBridge.isSecure(scheme: "http", host: "localhost"))
+        #expect(!LocationBridge.isSecure(scheme: "http", host: "maps.example"))
     }
 
     @Test func notNowIsNotRemembered() async {
@@ -901,7 +951,7 @@ struct WebKitIntegrationTests {
     @Test func tabsWithoutCredentialStoreHaveNoBridge() async throws {
         let server = try await LocalTestServer()
         let tab = try await loadedTab(manager, server.baseURL.appending(path: "login"))
-        #expect(tab.webView.configuration.userContentController.userScripts.isEmpty)
+        #expect(!tab.webView.configuration.userContentController.userScripts.contains { $0.source.contains("kaffinLogin") })
     }
 }
 

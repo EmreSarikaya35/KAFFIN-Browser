@@ -1,4 +1,5 @@
 import BrowserCore
+import CoreLocation
 import Foundation
 
 /// What a page may ask the user. Without a presenter, every answer is the safe one: no.
@@ -11,4 +12,5 @@ public protocol PageDialogPresenting: AnyObject {
     func confirmOpening(_ url: URL, from site: String) async -> Bool
     func askPermission(_ kind: SitePermissionKind, for site: String) async -> PermissionAnswer
     func ensureSystemLocationAccess() async -> Bool
+    func currentLocation() async -> CLLocation?
 }

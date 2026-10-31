@@ -82,7 +82,7 @@ final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
-    private static func site(of origin: WKSecurityOrigin) -> String {
+    static func site(of origin: WKSecurityOrigin) -> String {
         let base = "\(origin.protocol)://\(origin.host)"
         return origin.port == 0 ? base : "\(base):\(origin.port)"
     }

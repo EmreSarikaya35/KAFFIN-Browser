@@ -18,6 +18,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private var findHost: NSHostingView<FindBarView>!
     private var loginHost: NSHostingView<LoginPromptView>!
     private var suggestionHost: NSHostingView<SuggestionListView>!
+    private var storeHost: NSHostingView<StoreInstallView>?
     private let suggestions: SuggestionsModel
     let downloads: DownloadManager
     let factory: WebViewFactory
@@ -102,6 +103,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         updateChromeHeight()
         updateLoginPrompt()
         updateSuggestions()
+        updateStoreOffer()
     }
 
     var snapshot: SessionWindow { tabManager.snapshot() }
@@ -156,6 +158,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             self?.open($0)
         })
         suggestionHost.translatesAutoresizingMaskIntoConstraints = false
+        if let extensions {
+            let host = NSHostingView(rootView: StoreInstallView(tabManager: tabManager, extensions: extensions))
+            host.translatesAutoresizingMaskIntoConstraints = false
+            host.isHidden = true
+            content.addSubview(host)
+            NSLayoutConstraint.activate([
+                // A corner, because the store keeps its search box at the top of the page.
+                host.bottomAnchor.constraint(equalTo: webContainer.bottomAnchor, constant: -24),
+                host.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor, constant: -28),
+            ])
+            storeHost = host
+        }
         suggestionHost.isHidden = true
         content.addSubview(suggestionHost)
         NSLayoutConstraint.activate([
@@ -239,6 +253,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             Task { @MainActor in self?.updateNewTabPage() }
         }
         newTabHost.isHidden = !isBlank
+    }
+
+    private func updateStoreOffer() {
+        guard let extensions else { return }
+        let offer = withObservationTracking {
+            StoreInstallView.offer(tabManager: tabManager, extensions: extensions)
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.updateStoreOffer() }
+        }
+        storeHost?.isHidden = offer == nil
     }
 
     private func updateSuggestions() {

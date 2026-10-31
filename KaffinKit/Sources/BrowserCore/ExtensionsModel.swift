@@ -45,14 +45,25 @@ public struct ExtensionEntry: Identifiable {
     public let isEnabled: Bool
     public let problems: [String]
     public let icon: NSImage?
+    /// Set when the extension came from the Chrome Web Store.
+    public let storeID: String?
 
-    public init(id: String, name: String, version: String, isEnabled: Bool, problems: [String], icon: NSImage?) {
+    public init(
+        id: String,
+        name: String,
+        version: String,
+        isEnabled: Bool,
+        problems: [String],
+        icon: NSImage?,
+        storeID: String?
+    ) {
         self.id = id
         self.name = name
         self.version = version
         self.isEnabled = isEnabled
         self.problems = problems
         self.icon = icon
+        self.storeID = storeID
     }
 }
 
@@ -73,6 +84,10 @@ public final class ExtensionsModel {
     @ObservationIgnored public weak var commands: (any ExtensionCommands)?
 
     public init() {}
+
+    public func isInstalled(storeID: String) -> Bool {
+        entries.contains { $0.storeID == storeID }
+    }
 }
 
 /// The store's Add button only works in Chrome, so a listing's address or identifier stands in for it.
@@ -89,6 +104,12 @@ public enum ChromeWebStore {
 
     private static func isIdentifier(_ text: String) -> Bool {
         text.count == 32 && text.allSatisfy { ("a"..."p").contains($0) }
+    }
+
+    /// The extension a page lists. Stricter than typed text: only an encrypted store page counts.
+    public static func listingID(of url: URL?) -> String? {
+        guard let url, url.scheme == "https" else { return nil }
+        return extensionID(from: url.absoluteString)
     }
 
     public static func packageURL(for id: String) -> URL {

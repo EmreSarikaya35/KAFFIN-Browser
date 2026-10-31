@@ -60,6 +60,14 @@ struct ChromeWebStoreTests {
         #expect(ChromeWebStore.extensionID(from: text) == nil)
     }
 
+    @Test func pageListingsNeedAnEncryptedStoreAddress() {
+        #expect(ChromeWebStore.listingID(of: URL(string: "https://chromewebstore.google.com/detail/name/\(id)")) == id)
+        #expect(ChromeWebStore.listingID(of: URL(string: "http://chromewebstore.google.com/detail/name/\(id)")) == nil)
+        #expect(ChromeWebStore.listingID(of: URL(string: "https://chromewebstore.google.com/category/extensions")) == nil)
+        #expect(ChromeWebStore.listingID(of: URL(string: "https://evil.example/detail/name/\(id)")) == nil)
+        #expect(ChromeWebStore.listingID(of: nil) == nil)
+    }
+
     @Test func foreignSiteCannotPoseAsListing() {
         #expect(ChromeWebStore.extensionID(from: "https://evil.example/detail/x/\(id)") == nil)
     }

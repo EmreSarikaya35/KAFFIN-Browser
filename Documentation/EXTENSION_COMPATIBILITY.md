@@ -26,6 +26,10 @@ Only what was actually run is listed. A claim here needs a test that was run on 
 | `offscreen`, `userScripts` | Unknown   | Requested by uBlock Origin Lite, behavior not checked |
 | Safari app extensions   | Not built    | WebKit can load them; KAFFIN has no install path |
 
+## Chrome Web Store
+
+Extension pages show an Add to KAFFIN button in the window's corner. The store's own Add to Chrome button stays grey, because the store allows it only in Chrome. In the sandboxed Release app, the same install path downloaded uBlock Origin Lite from Google and recorded its store identifier, and the button then hid. A click on the button itself has not been confirmed.
+
 ## Host behavior
 
 - Private windows run no extensions.

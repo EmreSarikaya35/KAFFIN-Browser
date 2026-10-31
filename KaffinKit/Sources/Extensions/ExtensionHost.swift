@@ -26,6 +26,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         var isEnabled: Bool
         var permissions: [String]
         var sites: [String]
+        var storeID: String?
     }
 
     public let model = ExtensionsModel()
@@ -108,6 +109,10 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
 
     /// Takes a folder, or a `.zip` or `.crx` file. Nothing stays behind unless the user approves.
     public func install(from source: URL) async throws {
+        try await install(from: source, storeID: nil)
+    }
+
+    public func install(from source: URL, storeID: String?) async throws {
         let id = UUID().uuidString
         let folder = directory.appending(path: id)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -124,7 +129,14 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
             let approval = Approval(name: webExtension.displayName ?? "", permissions: permissions, sites: sites)
             guard approve(approval) else { throw InstallError.declined }
 
-            let record = Record(id: id, package: package, isEnabled: true, permissions: permissions, sites: sites)
+            let record = Record(
+                id: id,
+                package: package,
+                isEnabled: true,
+                permissions: permissions,
+                sites: sites,
+                storeID: storeID
+            )
             records.append(record)
             extensions[id] = webExtension
             try load(record, webExtension)
@@ -142,7 +154,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         let (file, response) = try await URLSession.shared.download(from: ChromeWebStore.packageURL(for: id))
         defer { try? FileManager.default.removeItem(at: file) }
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw InstallError.notAnExtension }
-        try await install(from: file)
+        try await install(from: file, storeID: id)
     }
 
     private func copyPackage(from source: URL, into folder: URL) throws -> String {
@@ -211,7 +223,8 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
                 isEnabled: record.isEnabled,
                 problems: (webExtension?.errors ?? []).map(\.localizedDescription)
                     + (contexts[record.id]?.errors ?? []).map(\.localizedDescription),
-                icon: webExtension?.icon(for: NSSize(width: 32, height: 32))
+                icon: webExtension?.icon(for: NSSize(width: 32, height: 32)),
+                storeID: record.storeID
             )
         }
     }

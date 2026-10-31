@@ -166,6 +166,19 @@ struct ExtensionHostTests {
         try await wait("content script") { await dataset(tab, "probe") == "ran" }
     }
 
+    @Test func storeInstallIsRememberedAcrossRestart() async throws {
+        let storeID = "ddkjiahejlhfcafbddmgiahcphecmpfh"
+        do {
+            let (host, _) = makeHost()
+            try await host.install(from: makeExtension(), storeID: storeID)
+            #expect(host.model.isInstalled(storeID: storeID))
+        }
+        let (host, _) = makeHost()
+        await host.loadInstalled()
+        #expect(host.model.isInstalled(storeID: storeID))
+        #expect(!host.model.isInstalled(storeID: "aaaabbbbccccddddeeeeffffgggghhhh"))
+    }
+
     @Test func removalDeletesItsFiles() async throws {
         let (host, _) = makeHost()
         try await host.install(from: makeExtension())

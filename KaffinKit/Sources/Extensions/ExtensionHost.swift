@@ -127,7 +127,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         let folder = directory.appending(path: id)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         do {
-            let package = try copyPackage(from: source, into: folder)
+            let package = try copyPackage(from: source, into: folder, storeID: storeID)
             let webExtension: WKWebExtension
             do {
                 webExtension = try await WKWebExtension(resourceBaseURL: folder.appending(path: package))
@@ -209,7 +209,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staged) }
 
-        let package = try copyPackage(from: source, into: staged)
+        let package = try copyPackage(from: source, into: staged, storeID: records.first { $0.id == id }?.storeID)
         guard let candidate = try? await WKWebExtension(resourceBaseURL: staged.appending(path: package)) else {
             throw InstallError.notAnExtension
         }
@@ -246,7 +246,8 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         refreshModel()
     }
 
-    private func copyPackage(from source: URL, into folder: URL) throws -> String {
+    /// Store packages must be signed by that exact extension, for installs and updates alike.
+    private func copyPackage(from source: URL, into folder: URL, storeID: String?) throws -> String {
         let isDirectory = try source.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true
         if isDirectory {
             try FileManager.default.copyItem(at: source, to: folder.appending(path: "package"))
@@ -255,7 +256,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         guard try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0 <= Self.maximumPackageSize else {
             throw InstallError.tooLarge
         }
-        guard let archive = CRXFile.zipArchive(from: try Data(contentsOf: source)) else {
+        guard let archive = CRXFile.zipArchive(from: try Data(contentsOf: source), expectedID: storeID) else {
             throw InstallError.notAnExtension
         }
         try archive.write(to: folder.appending(path: "package.zip"))

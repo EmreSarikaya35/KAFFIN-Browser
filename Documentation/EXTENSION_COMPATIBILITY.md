@@ -35,6 +35,6 @@ Extension pages show an Add to KAFFIN button in the window's corner. The store's
 ## Host behavior
 
 - Private windows run no extensions.
-- CRX signatures are not verified. Packages come over TLS from the store, or from a file the user chose.
+- CRX3 signatures are verified, and the signing key must own the extension's identifier. Store installs and updates must also match the requested identifier, so a store package cannot replace another extension. The store's own publisher signature is not checked separately. Unsigned ZIP files and folders install only when the user picks them.
 - Store extensions check for updates about 30 seconds after launch. The check sends their identifiers and versions to Google. An update asking for new access needs approval, and a declined update is asked about again at the next launch.
 - Enabling or adding an extension does not reach pages that are already open until they reload.

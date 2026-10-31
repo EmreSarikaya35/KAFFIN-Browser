@@ -426,6 +426,16 @@ private struct TabItemView: View {
     private var isSelected: Bool { tab.id == tabManager.selectedTabID }
     private var title: String { tab.title ?? tab.url?.host() ?? L10n.string("tab.new") }
 
+    /// The icons that show these states say nothing to VoiceOver.
+    private var accessibilityState: String {
+        var states: [String] = []
+        if tab.state == .sleeping { states.append(L10n.string("tab.stateSleeping")) }
+        if tab.isLoading { states.append(L10n.string("tab.stateLoading")) }
+        if tab.isMuted { states.append(L10n.string("tab.stateMuted")) }
+        if tab.isPinned { states.append(L10n.string("tab.statePinned")) }
+        return states.joined(separator: ", ")
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             if tab.state == .sleeping {
@@ -467,7 +477,19 @@ private struct TabItemView: View {
         .frame(minWidth: 44, maxWidth: tab.isPinned ? 44 : 240)
         .fixedSize(horizontal: tab.isPinned, vertical: false)
         .frame(height: 34)
+        // One element per tab, with its small buttons offered as actions.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
+        .accessibilityValue(accessibilityState)
+        .accessibilityAction { tabManager.select(tab.id) }
+        .accessibilityActions {
+            if tab.isMuted {
+                Button(L10n.string("tab.unmute")) { Task { await tabManager.toggleMute(tab.id) } }
+            }
+            if !tab.isPinned {
+                Button(L10n.string("tab.close")) { tabManager.close(tab.id) }
+            }
+        }
         .background(
             isSelected ? ChromePalette.toolbar : .clear,
             in: UnevenRoundedRectangle(topLeadingRadius: 8, topTrailingRadius: 8)

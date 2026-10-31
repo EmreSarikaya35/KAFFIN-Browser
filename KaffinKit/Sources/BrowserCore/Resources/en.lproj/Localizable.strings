@@ -54,6 +54,10 @@
 "extensions.removeDetail" = "Its settings and stored data are removed too.";
 "extensions.installFailed" = "This extension could not be installed. Check that it is a Chrome or Safari web extension.";
 "tab.sleep" = "Sleep Tab";
+"tab.stateSleeping" = "Sleeping";
+"tab.stateLoading" = "Loading";
+"tab.stateMuted" = "Muted";
+"tab.statePinned" = "Pinned";
 "settings.performance" = "Performance";
 "performance.profile" = "Optimization";
 "performance.standard" = "Standard";

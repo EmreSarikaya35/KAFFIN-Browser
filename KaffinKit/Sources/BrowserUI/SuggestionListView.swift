@@ -19,6 +19,7 @@ public struct SuggestionListView: View {
                     row(item)
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(model.isHighlighted(item) ? .isSelected : [])
             }
         }
         .padding(.vertical, 6)
@@ -27,6 +28,10 @@ public struct SuggestionListView: View {
         .shadow(radius: 5, y: 2)
         .padding(.horizontal, 6)
         .padding(.bottom, 8)
+        // Focus stays in the address field, so VoiceOver would not notice the arrow keys.
+        .onChange(of: model.selected) { _, item in
+            if let item { AccessibilityNotification.Announcement(item.title).post() }
+        }
     }
 
     private func row(_ item: Suggestion) -> some View {
@@ -35,6 +40,7 @@ public struct SuggestionListView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
+                .accessibilityHidden(true)
             Text(item.title).lineLimit(1)
             if !item.detail.isEmpty {
                 Text(item.detail).foregroundStyle(.secondary).lineLimit(1)

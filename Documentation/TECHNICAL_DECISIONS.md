@@ -107,3 +107,7 @@ Debug builds are ad hoc signed without the hardened runtime flag, which Xcode om
 ## Testing
 
 Swift Testing needs the full Xcode toolchain because Command Line Tools lack its macro plugin. Run tests with `swift test` in `KaffinKit/`.
+
+## Page Location
+
+`WKWebView` on macOS calls the geolocation permission delegate but provides no location. KAFFIN replaces `Geolocation.prototype` in the main frame and answers from `CLLocationManager`. The page script talks to an isolated world through window events, because a page-world message handler would expose `window.webkit`.

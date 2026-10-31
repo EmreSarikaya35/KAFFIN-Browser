@@ -44,6 +44,8 @@ public struct SettingsView: View {
         self.onSetDefault = onSetDefault
     }
 
+    private static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+
     private static let panes: [(pane: SettingsPane, key: String, symbol: String)] = [
         (.general, "settings.general", "gearshape"),
         (.passwords, "settings.passwords", "key"),
@@ -60,6 +62,11 @@ public struct SettingsView: View {
                     .padding(.bottom, 12)
                 ForEach(Self.panes, id: \.pane) { sidebarRow($0.pane, key: $0.key, symbol: $0.symbol) }
                 Spacer()
+                Text("KAFFIN \(Self.version)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 10)
             }
             .padding(20)
             .frame(width: 240)

@@ -220,6 +220,11 @@ private struct ExtensionsSettingsView: View {
                 }
             }
             Spacer()
+            Toggle(L10n.string("extensions.showInToolbar"), isOn: Binding {
+                entry.isPinned
+            } set: {
+                model.commands?.setPinned(entry.id, $0)
+            })
             Toggle(L10n.string("extensions.enabled"), isOn: Binding {
                 entry.isEnabled
             } set: {

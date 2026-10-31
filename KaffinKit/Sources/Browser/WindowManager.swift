@@ -57,6 +57,11 @@ public final class WindowManager: NSObject {
             isStarted = true
             pendingURLs.forEach(openInFrontWindow)
             pendingURLs = []
+            // Later, so a network check never slows down opening the browser.
+            try? await Task.sleep(for: .seconds(30))
+            for session in sessions.values {
+                await session.extensions.checkForUpdates()
+            }
         }
     }
 

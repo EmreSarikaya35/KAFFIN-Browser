@@ -112,7 +112,10 @@ public struct BrowserChromeView: View {
             .onChange(of: downloads.items.count) { old, new in
                 if new > old, activeState == .key { isShowingDownloads = true }
             }
-            if let extensions { extensionsMenu(extensions) }
+            if let extensions {
+                ForEach(extensions.entries.filter { $0.isEnabled && $0.isPinned }) { extensionButton($0, extensions) }
+                extensionsMenu(extensions)
+            }
             if let profileMenu { ProfileButton(menu: profileMenu) }
             mainMenu
         }
@@ -160,6 +163,32 @@ public struct BrowserChromeView: View {
         .buttonStyle(.borderless)
         .disabled(tab?.url == nil)
         .accessibilityLabel(L10n.string(isBookmarked ? "bookmark.remove" : "bookmark.add"))
+    }
+
+    private func extensionButton(_ entry: ExtensionEntry, _ model: ExtensionsModel) -> some View {
+        Button {
+            model.commands?.performAction(entry.id)
+        } label: {
+            ZStack(alignment: .bottomTrailing) {
+                if let icon = entry.icon {
+                    Image(nsImage: icon).resizable().frame(width: 18, height: 18)
+                } else {
+                    Image(systemName: "puzzlepiece.extension").frame(width: 18, height: 18)
+                }
+                if !entry.badge.isEmpty {
+                    Text(entry.badge)
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 2)
+                        .background(Color(nsColor: .darkGray), in: RoundedRectangle(cornerRadius: 3))
+                        .fixedSize()
+                        .offset(x: 5, y: 4)
+                }
+            }
+            .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(entry.badge.isEmpty ? entry.name : "\(entry.name), \(entry.badge)")
     }
 
     private func extensionsMenu(_ model: ExtensionsModel) -> some View {

@@ -31,19 +31,26 @@ struct ExtensionHostTests {
         try #"""
         {"manifest_version":3,"name":"Probe","version":"1.2","description":"Test",
          "background":{"service_worker":"bg.js"},
-         "permissions":["storage","tabs","scripting"],
+         "permissions":["storage","tabs","scripting","contextMenus"],
          "host_permissions":["http://127.0.0.1/*"],
          "action":{"default_title":"Probe"},
          "content_scripts":[{"matches":["http://127.0.0.1/*"],"js":["cs.js"]}]}
         """#.write(to: folder.appending(path: "manifest.json"), atomically: true, encoding: .utf8)
         try #"""
+        chrome.contextMenus.removeAll(() => {
+          chrome.contextMenus.create({ id: 'probe', title: 'Probe Item', contexts: ['all'] });
+        });
         chrome.runtime.onMessage.addListener((message, sender, reply) => {
           (async () => {
+            await chrome.action.setBadgeText({ text: '7' });
             if (message.open) { await chrome.tabs.create({ url: message.open, active: false }); reply({ opened: true }); return; }
             await chrome.storage.local.set({ visits: 1 });
             const stored = await chrome.storage.local.get('visits');
             const tabs = await chrome.tabs.query({ currentWindow: true });
-            reply({ stored: stored.visits, tabs: tabs.length, title: sender.tab?.title, active: sender.tab?.active });
+            reply({
+              stored: stored.visits, tabs: tabs.length, title: sender.tab?.title, active: sender.tab?.active,
+              version: chrome.runtime.getManifest().version,
+            });
           })();
           return true;
         });
@@ -60,6 +67,11 @@ struct ExtensionHostTests {
         });
         """#.write(to: folder.appending(path: "cs.js"), atomically: true, encoding: .utf8)
         return folder
+    }
+
+    private func rewriteManifest(_ folder: URL, _ change: (String) -> String) throws {
+        let file = folder.appending(path: "manifest.json")
+        try change(String(contentsOf: file, encoding: .utf8)).write(to: file, atomically: true, encoding: .utf8)
     }
 
     private func makeHost(approve: Bool = true) -> (ExtensionHost, WebViewFactory) {
@@ -177,6 +189,114 @@ struct ExtensionHostTests {
         await host.loadInstalled()
         #expect(host.model.isInstalled(storeID: storeID))
         #expect(!host.model.isInstalled(storeID: "aaaabbbbccccddddeeeeffffgggghhhh"))
+    }
+
+    @Test func badgeReachesTheToolbarModel() async throws {
+        let server = try await LocalTestServer()
+        let (host, factory) = makeHost()
+        let manager = TabManager(factory: factory)
+        host.register(manager, window: nil)
+        try await host.install(from: makeExtension())
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+
+        try await wait("reply") { await dataset(tab, "reply") != nil }
+        try await wait("badge") { host.model.entries.first?.badge == "7" }
+    }
+
+    @Test func extensionMenuItemsReachThePageMenu() async throws {
+        let server = try await LocalTestServer()
+        let (host, factory) = makeHost()
+        let manager = TabManager(factory: factory)
+        host.register(manager, window: nil)
+        try await host.install(from: makeExtension())
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("reply") { await dataset(tab, "reply") != nil }
+
+        try await wait("menu item") {
+            factory.pageMenuItems?(tab.webView).flatMap { $0.submenu?.items ?? [$0] }.contains { $0.title == "Probe Item" } == true
+        }
+    }
+
+    @Test func toolbarPinSurvivesRestart() async throws {
+        let id: String
+        do {
+            let (host, _) = makeHost()
+            try await host.install(from: makeExtension())
+            id = try #require(host.model.entries.first?.id)
+            #expect(host.model.entries.first?.isPinned == false)
+            host.setPinned(id, true)
+        }
+        let (host, _) = makeHost()
+        await host.loadInstalled()
+        #expect(host.model.entries.first?.isPinned == true)
+    }
+
+    @Test func updateKeepsIdentityAndStorageAndLoadsNewVersion() async throws {
+        let server = try await LocalTestServer()
+        let source = try makeExtension()
+        let (host, factory) = makeHost()
+        let manager = TabManager(factory: factory)
+        host.register(manager, window: nil)
+        try await host.install(from: source)
+        let id = try #require(host.model.entries.first?.id)
+
+        try rewriteManifest(source) { $0.replacingOccurrences(of: #""version":"1.2""#, with: #""version":"1.3""#) }
+        try await host.update(id, from: source)
+
+        #expect(host.model.entries.map(\.id) == [id])
+        #expect(host.model.entries.first?.version == "1.3")
+        let tab = manager.newTab(url: server.baseURL.appending(path: "page"))
+        try await wait("reply") { await dataset(tab, "reply") != nil }
+        #expect(await dataset(tab, "reply")?.contains(#""version":"1.3""#) == true)
+    }
+
+    @Test func updateAskingForMoreNeedsApprovalAndRefusalKeepsOldVersion() async throws {
+        let source = try makeExtension()
+        var asked = 0
+        var allow = true
+        let factory = WebViewFactory(profileID: profile)
+        let host = ExtensionHost(
+            profileID: profile,
+            directory: root.appending(path: "installed"),
+            factory: factory,
+            approve: { _ in
+                asked += 1
+                return allow
+            }
+        )
+        try await host.install(from: source)
+        let id = try #require(host.model.entries.first?.id)
+        #expect(asked == 1)
+
+        try rewriteManifest(source) {
+            $0.replacingOccurrences(of: #""version":"1.2""#, with: #""version":"1.3""#)
+                .replacingOccurrences(of: #""scripting","#, with: #""scripting","cookies","#)
+        }
+        allow = false
+        await #expect(throws: ExtensionHost.InstallError.declined) { try await host.update(id, from: source) }
+        #expect(asked == 2)
+        #expect(host.model.entries.first?.version == "1.2")
+    }
+
+    @Test func updateWithSamePermissionsDoesNotAsk() async throws {
+        let source = try makeExtension()
+        var asked = 0
+        let factory = WebViewFactory(profileID: profile)
+        let host = ExtensionHost(
+            profileID: profile,
+            directory: root.appending(path: "installed"),
+            factory: factory,
+            approve: { _ in
+                asked += 1
+                return true
+            }
+        )
+        try await host.install(from: source)
+        let id = try #require(host.model.entries.first?.id)
+
+        try rewriteManifest(source) { $0.replacingOccurrences(of: #""version":"1.2""#, with: #""version":"1.3""#) }
+        try await host.update(id, from: source)
+        #expect(asked == 1)
     }
 
     @Test func removalDeletesItsFiles() async throws {

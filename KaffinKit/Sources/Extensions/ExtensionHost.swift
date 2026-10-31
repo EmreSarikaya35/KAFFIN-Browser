@@ -27,6 +27,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         var permissions: [String]
         var sites: [String]
         var storeID: String?
+        var isPinned: Bool?
     }
 
     public let model = ExtensionsModel()
@@ -54,6 +55,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         controller.delegate = self
         model.commands = self
         factory.extensionController = controller
+        factory.pageMenuItems = { [weak self] in self?.menuItems(for: $0) ?? [] }
     }
 
     // MARK: Windows and tabs
@@ -84,6 +86,12 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         return adapter
     }
 
+    private func menuItems(for webView: WKWebView) -> [NSMenuItem] {
+        let tab = windows.lazy.compactMap { $0.manager.tabs.first { $0.webView === webView } }.first
+        guard let tab else { return [] }
+        return contexts.values.flatMap { $0.menuItems(for: adapter(for: tab)) }
+    }
+
     func window(containing tab: Tabs.Tab) -> ExtensionWindow? {
         windows.first { $0.manager.tabs.contains { $0 === tab } }
     }
@@ -98,6 +106,8 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
             }
         case .selected(let tab, let previous):
             controller.didActivateTab(adapter(for: tab), previousActiveTab: previous.map(adapter))
+            // Badges can differ per tab.
+            refreshModel()
         case .moved(let tab, let index):
             controller.didMoveTab(adapter(for: tab), from: index, in: window(containing: tab))
         case .changed(let tab):
@@ -135,7 +145,8 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
                 isEnabled: true,
                 permissions: permissions,
                 sites: sites,
-                storeID: storeID
+                storeID: storeID,
+                isPinned: false
             )
             records.append(record)
             extensions[id] = webExtension
@@ -151,10 +162,88 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
     }
 
     public func installFromStore(id: String) async throws {
-        let (file, response) = try await URLSession.shared.download(from: ChromeWebStore.packageURL(for: id))
+        let file = try await downloadPackage(id)
         defer { try? FileManager.default.removeItem(at: file) }
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw InstallError.notAnExtension }
         try await install(from: file, storeID: id)
+    }
+
+    private func downloadPackage(_ storeID: String) async throws -> URL {
+        let (file, response) = try await URLSession.shared.download(from: ChromeWebStore.packageURL(for: storeID))
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            try? FileManager.default.removeItem(at: file)
+            throw InstallError.notAnExtension
+        }
+        return file
+    }
+
+    /// Asks the store once. An extension whose update the user declines stays on its version.
+    public func checkForUpdates() async {
+        var installed: [String: String] = [:]
+        for record in records {
+            if let storeID = record.storeID, let version = extensions[record.id]?.displayVersion {
+                installed[storeID] = version
+            }
+        }
+        guard !installed.isEmpty,
+              let (data, _) = try? await URLSession.shared.data(from: ChromeWebStore.updateCheckURL(for: installed))
+        else { return }
+
+        for (storeID, version) in ChromeWebStore.availableVersions(in: data) {
+            guard let current = installed[storeID], ChromeWebStore.isNewer(version, than: current),
+                  let record = records.first(where: { $0.storeID == storeID }) else { continue }
+            do {
+                let file = try await downloadPackage(storeID)
+                defer { try? FileManager.default.removeItem(at: file) }
+                try await update(record.id, from: file)
+            } catch {
+                Self.logger.notice("Extension update skipped: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    /// Replaces the package and keeps the identifier, so the extension's stored data stays.
+    /// The old version keeps working unless everything up to the swap succeeds.
+    public func update(_ id: String, from source: URL) async throws {
+        let staged = directory.appending(path: "\(id).update")
+        try? FileManager.default.removeItem(at: staged)
+        try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: staged) }
+
+        let package = try copyPackage(from: source, into: staged)
+        guard let candidate = try? await WKWebExtension(resourceBaseURL: staged.appending(path: package)) else {
+            throw InstallError.notAnExtension
+        }
+        // Looked up after the wait, because the user may have removed the extension meanwhile.
+        guard let index = records.firstIndex(where: { $0.id == id }) else { return }
+        let permissions = candidate.requestedPermissions.map(\.rawValue).sorted()
+        let sites = candidate.allRequestedMatchPatterns.map(\.string).sorted()
+        let added = Approval(
+            name: candidate.displayName ?? "",
+            permissions: permissions.filter { !records[index].permissions.contains($0) },
+            sites: sites.filter { !records[index].sites.contains($0) }
+        )
+        if !added.permissions.isEmpty || !added.sites.isEmpty, !approve(added) { throw InstallError.declined }
+
+        if let context = contexts.removeValue(forKey: id) { try? controller.unload(context) }
+        let folder = directory.appending(path: id)
+        try? FileManager.default.removeItem(at: folder)
+        try FileManager.default.moveItem(at: staged, to: folder)
+
+        records[index] = Record(
+            id: id,
+            package: package,
+            isEnabled: records[index].isEnabled,
+            permissions: Array(Set(records[index].permissions + permissions)).sorted(),
+            sites: Array(Set(records[index].sites + sites)).sorted(),
+            storeID: records[index].storeID,
+            isPinned: records[index].isPinned
+        )
+        try saveIndex()
+        let installed = try await WKWebExtension(resourceBaseURL: folder.appending(path: package))
+        guard let record = records.first(where: { $0.id == id }) else { return }
+        extensions[id] = installed
+        if record.isEnabled { try load(record, installed) }
+        refreshModel()
     }
 
     private func copyPackage(from source: URL, into folder: URL) throws -> String {
@@ -213,6 +302,10 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         try JSONEncoder().encode(records).write(to: directory.appending(path: "index.json"), options: .atomic)
     }
 
+    private var activeTab: ExtensionTab? {
+        windows.last?.manager.selectedTab.map(adapter)
+    }
+
     private func refreshModel() {
         model.entries = records.map { record in
             let webExtension = extensions[record.id]
@@ -224,7 +317,9 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
                 problems: (webExtension?.errors ?? []).map(\.localizedDescription)
                     + (contexts[record.id]?.errors ?? []).map(\.localizedDescription),
                 icon: webExtension?.icon(for: NSSize(width: 32, height: 32)),
-                storeID: record.storeID
+                storeID: record.storeID,
+                isPinned: record.isPinned ?? false,
+                badge: contexts[record.id]?.action(for: activeTab)?.badgeText ?? ""
             )
         }
     }
@@ -239,6 +334,13 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
         } else if let context = contexts.removeValue(forKey: id) {
             try? controller.unload(context)
         }
+        try? saveIndex()
+        refreshModel()
+    }
+
+    public func setPinned(_ id: String, _ isPinned: Bool) {
+        guard let index = records.firstIndex(where: { $0.id == id }) else { return }
+        records[index].isPinned = isPinned
         try? saveIndex()
         refreshModel()
     }
@@ -268,8 +370,7 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
 
     public func performAction(_ id: String) {
         guard let context = contexts[id] else { return }
-        let active = windows.last?.manager.selectedTab.map(adapter)
-        context.performAction(for: active)
+        context.performAction(for: activeTab)
     }
 
     // MARK: WKWebExtensionControllerDelegate
@@ -361,6 +462,14 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
 
     public func webExtensionController(
         _ controller: WKWebExtensionController,
+        didUpdate action: WKWebExtension.Action,
+        forExtensionContext context: WKWebExtensionContext
+    ) {
+        refreshModel()
+    }
+
+    public func webExtensionController(
+        _ controller: WKWebExtensionController,
         presentActionPopup action: WKWebExtension.Action,
         for context: WKWebExtensionContext,
         completionHandler: @escaping ((any Error)?) -> Void
@@ -370,8 +479,9 @@ public final class ExtensionHost: NSObject, WKWebExtensionControllerDelegate, Ex
             completionHandler(InstallError.notAnExtension)
             return
         }
-        // Under the toolbar's extensions button, at the right end of the window.
-        let anchor = NSRect(x: view.bounds.maxX - 110, y: view.bounds.maxY - 84, width: 24, height: 1)
+        // Under the click, because the button sits inside SwiftUI and has no view to anchor to.
+        let x = view.window.map { min(view.bounds.maxX - 24, max(0, $0.mouseLocationOutsideOfEventStream.x)) } ?? 0
+        let anchor = NSRect(x: x, y: view.bounds.maxY - 84, width: 1, height: 1)
         popover.show(relativeTo: anchor, of: view, preferredEdge: .minY)
         completionHandler(nil)
     }

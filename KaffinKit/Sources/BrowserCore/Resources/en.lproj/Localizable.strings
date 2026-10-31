@@ -11,6 +11,7 @@
 "tab.moveToNewWindow" = "Move Tab to New Window";
 "tab.pin" = "Pin Tab";
 "extensions.title" = "Extensions";
+"extensions.showInToolbar" = "Show in toolbar";
 "extensions.addToKaffin" = "Add to KAFFIN";
 "extensions.manage" = "Manage Extensions";
 "extensions.empty" = "Extensions you add appear here.";

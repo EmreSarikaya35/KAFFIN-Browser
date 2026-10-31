@@ -1,5 +1,18 @@
+import AppKit
 import Foundation
 import WebKit
+
+/// A WKWebView whose right-click menu can gain items, which is how extensions reach it.
+final class BrowserWebView: WKWebView {
+    var extraMenuItems: ((WKWebView) -> [NSMenuItem])?
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        let items = extraMenuItems?(self) ?? []
+        if !items.isEmpty { menu.addItem(.separator()) }
+        items.forEach(menu.addItem)
+    }
+}
 
 /// The only place that builds WebKit configurations and WebViews, so every tab shares the same policies.
 @MainActor
@@ -9,6 +22,7 @@ public final class WebViewFactory {
     public let dataStore: WKWebsiteDataStore
     /// Set for a profile's normal windows. Private windows have none, so extensions never see them.
     public var extensionController: WKWebExtensionController?
+    public var pageMenuItems: ((WKWebView) -> [NSMenuItem])?
 
     public init(profileID: UUID = WebViewFactory.defaultProfileID) {
         dataStore = WKWebsiteDataStore(forIdentifier: profileID)
@@ -53,7 +67,8 @@ public final class WebViewFactory {
 
     /// Pass WebKit's own configuration for popups, which must be used unchanged.
     public func makeWebView(configuration: WKWebViewConfiguration? = nil) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: configuration ?? makeConfiguration())
+        let webView = BrowserWebView(frame: .zero, configuration: configuration ?? makeConfiguration())
+        webView.extraMenuItems = { [weak self] in self?.pageMenuItems?($0) ?? [] }
         webView.allowsBackForwardNavigationGestures = true
         #if DEBUG
         webView.isInspectable = true

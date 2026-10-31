@@ -21,7 +21,9 @@ Only what was actually run is listed. A claim here needs a test that was run on 
 | `declarativeNetRequest` | Works        | uBlock Origin Lite |
 | CRX 3 packages          | Works        | uBlock Origin Lite |
 | ZIP packages, folders   | Works        | Test suite |
-| Action popup            | Not tested   | Built on WebKit's popover, never opened |
+| Action popup            | Works        | Opened by the project owner with uBlock Origin Lite |
+| `action.setBadgeText`   | Works        | Test extension, shown in the toolbar model |
+| `contextMenus`          | Works        | Test extension, read from WebKit; a real right-click was not exercised |
 | `notifications`, `downloads`, `identity`, `debugger` | Not in the SDK permission list | Expect these to fail |
 | `offscreen`, `userScripts` | Unknown   | Requested by uBlock Origin Lite, behavior not checked |
 | Safari app extensions   | Not built    | WebKit can load them; KAFFIN has no install path |
@@ -34,5 +36,5 @@ Extension pages show an Add to KAFFIN button in the window's corner. The store's
 
 - Private windows run no extensions.
 - CRX signatures are not verified. Packages come over TLS from the store, or from a file the user chose.
-- There is no update check, so installed extensions stay on their version.
+- Store extensions check for updates about 30 seconds after launch. The check sends their identifiers and versions to Google. An update asking for new access needs approval, and a declined update is asked about again at the next launch.
 - Enabling or adding an extension does not reach pages that are already open until they reload.

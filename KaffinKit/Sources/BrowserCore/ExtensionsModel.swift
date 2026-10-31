@@ -47,6 +47,9 @@ public struct ExtensionEntry: Identifiable {
     public let icon: NSImage?
     /// Set when the extension came from the Chrome Web Store.
     public let storeID: String?
+    public let isPinned: Bool
+    /// Short text the extension shows over its icon, like a count of blocked requests.
+    public let badge: String
 
     public init(
         id: String,
@@ -55,7 +58,9 @@ public struct ExtensionEntry: Identifiable {
         isEnabled: Bool,
         problems: [String],
         icon: NSImage?,
-        storeID: String?
+        storeID: String?,
+        isPinned: Bool,
+        badge: String
     ) {
         self.id = id
         self.name = name
@@ -64,6 +69,8 @@ public struct ExtensionEntry: Identifiable {
         self.problems = problems
         self.icon = icon
         self.storeID = storeID
+        self.isPinned = isPinned
+        self.badge = badge
     }
 }
 
@@ -72,6 +79,7 @@ public protocol ExtensionCommands: AnyObject {
     func install(from url: URL) async throws
     func installFromStore(id: String) async throws
     func setEnabled(_ id: String, _ isEnabled: Bool)
+    func setPinned(_ id: String, _ isPinned: Bool)
     func remove(_ id: String) async
     func performAction(_ id: String)
 }
@@ -110,6 +118,50 @@ public enum ChromeWebStore {
     public static func listingID(of url: URL?) -> String? {
         guard let url, url.scheme == "https" else { return nil }
         return extensionID(from: url.absoluteString)
+    }
+
+    public static func updateCheckURL(for versions: [String: String]) -> URL {
+        let extensions = versions.sorted { $0.key < $1.key }.map { "&x=id%3D\($0.key)%26v%3D\($0.value)%26uc" }
+        return URL(string: "https://clients2.google.com/service/update2/crx?response=updatecheck"
+            + "&prodversion=156.0.0.0&acceptformat=crx2,crx3" + extensions.joined())!
+    }
+
+    /// Extensions with a newer release, from the update service's XML. Bad data simply means no updates.
+    public static func availableVersions(in response: Data) -> [String: String] {
+        let reader = UpdateResponseReader()
+        let parser = XMLParser(data: response)
+        parser.delegate = reader
+        return parser.parse() ? reader.versions : [:]
+    }
+
+    /// Compares each dotted number, so 1.10 is newer than 1.9, and 1.2 equals 1.2.0.
+    public static func isNewer(_ version: String, than current: String) -> Bool {
+        let new = version.split(separator: ".").map { Int($0) ?? 0 }
+        let old = current.split(separator: ".").map { Int($0) ?? 0 }
+        for index in 0..<max(new.count, old.count) {
+            let left = index < new.count ? new[index] : 0
+            let right = index < old.count ? old[index] : 0
+            if left != right { return left > right }
+        }
+        return false
+    }
+
+    private final class UpdateResponseReader: NSObject, XMLParserDelegate {
+        var versions: [String: String] = [:]
+        private var currentID: String?
+
+        func parser(
+            _ parser: XMLParser,
+            didStartElement name: String,
+            namespaceURI: String?,
+            qualifiedName: String?,
+            attributes: [String: String]
+        ) {
+            if name == "app" { currentID = attributes["appid"] }
+            if name == "updatecheck", let currentID, let version = attributes["version"] {
+                versions[currentID] = version
+            }
+        }
     }
 
     public static func packageURL(for id: String) -> URL {

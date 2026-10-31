@@ -72,6 +72,39 @@ struct ChromeWebStoreTests {
         #expect(ChromeWebStore.extensionID(from: "https://evil.example/detail/x/\(id)") == nil)
     }
 
+    @Test func readsAvailableVersionsAndIgnoresUpToDateEntries() {
+        let response = Data("""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
+          <app appid="\(id)" status="ok"><updatecheck codebase="https://x/y.crx" version="2.0.1" status="ok"/></app>
+          <app appid="aaaabbbbccccddddeeeeffffgggghhhh" status="ok"><updatecheck status="noupdate"/></app>
+        </gupdate>
+        """.utf8)
+        #expect(ChromeWebStore.availableVersions(in: response) == [id: "2.0.1"])
+    }
+
+    @Test func malformedUpdateResponseMeansNoUpdates() {
+        #expect(ChromeWebStore.availableVersions(in: Data("<not xml".utf8)).isEmpty)
+    }
+
+    @Test(arguments: [
+        ("1.10", "1.9", true),
+        ("2026.1026.1812", "2026.1026.1811", true),
+        ("1.2", "1.2", false),
+        ("1.2", "1.2.0", false),
+        ("1.2.1", "1.2", true),
+        ("1.1", "1.2", false),
+    ])
+    func comparesVersionsNumerically(new: String, old: String, expected: Bool) {
+        #expect(ChromeWebStore.isNewer(new, than: old) == expected)
+    }
+
+    @Test func updateCheckNamesEachExtension() {
+        let url = ChromeWebStore.updateCheckURL(for: [id: "1.0"])
+        #expect(url.absoluteString.contains("response=updatecheck"))
+        #expect(url.absoluteString.contains("id%3D\(id)%26v%3D1.0%26uc"))
+    }
+
     @Test func downloadAddressCarriesTheIdentifier() {
         let url = ChromeWebStore.packageURL(for: id)
         #expect(url.host() == "clients2.google.com")

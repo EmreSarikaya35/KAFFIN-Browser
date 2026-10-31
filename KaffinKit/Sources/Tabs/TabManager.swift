@@ -14,6 +14,7 @@ public final class TabManager {
     @ObservationIgnored public var onLastTabClosed: (() -> Void)?
 
     @ObservationIgnored private let factory: WebViewFactory
+    @ObservationIgnored private var closedTabURLs: [URL] = []
     @ObservationIgnored private lazy var navigationManager = NavigationManager(tabManager: self)
 
     public init(factory: WebViewFactory) {
@@ -68,6 +69,7 @@ public final class TabManager {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let wasSelected = id == selectedTabID
         let tab = tabs.remove(at: index)
+        if let url = tab.url { closedTabURLs.append(url) }
         tab.webView.stopLoading()
         tab.webView.navigationDelegate = nil
         tab.webView.uiDelegate = nil
@@ -82,6 +84,35 @@ public final class TabManager {
             selectedTabID = nil
             select(tabs[min(index, tabs.count - 1)].id)
         }
+    }
+
+    public func closeOthers(than id: Tab.ID) {
+        guard tabs.contains(where: { $0.id == id }) else { return }
+        select(id)
+        tabs.filter { $0.id != id }.forEach { close($0.id) }
+    }
+
+    /// Reopens by URL only; closed tabs keep no back/forward history yet.
+    @discardableResult
+    public func reopenClosedTab() -> Tab? {
+        closedTabURLs.popLast().map { newTab(url: $0) }
+    }
+
+    public func duplicate(_ id: Tab.ID) {
+        guard let url = tabs.first(where: { $0.id == id })?.url else { return }
+        select(id)
+        newTab(url: url)
+    }
+
+    public func move(_ id: Tab.ID, before targetID: Tab.ID) {
+        guard id != targetID, let from = tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard tabs.contains(where: { $0.id == targetID }) else { return }
+        let tab = tabs.remove(at: from)
+        tabs.insert(tab, at: tabs.firstIndex { $0.id == targetID }!)
+    }
+
+    public func selectTab(at index: Int) {
+        if tabs.indices.contains(index) { select(tabs[index].id) }
     }
 
     public func selectAdjacentTab(offset: Int) {

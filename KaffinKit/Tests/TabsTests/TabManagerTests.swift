@@ -82,4 +82,64 @@ struct TabManagerTests {
         manager.handleLoadFinished(of: background)
         #expect(background.state == .active)
     }
+
+    @Test func movesTabToNewPosition() {
+        let manager = makeManager()
+        let first = manager.newTab()
+        let second = manager.newTab()
+        let third = manager.newTab()
+
+        manager.move(third.id, before: first.id)
+        #expect(manager.tabs.map(\.id) == [third.id, first.id, second.id])
+        #expect(manager.selectedTabID == third.id)
+    }
+
+    @Test func movingUnknownTabChangesNothing() {
+        let manager = makeManager()
+        let first = manager.newTab()
+        let second = manager.newTab()
+
+        manager.move(UUID(), before: first.id)
+        #expect(manager.tabs.map(\.id) == [first.id, second.id])
+    }
+
+    @Test func closeOthersKeepsOnlyGivenTab() {
+        let manager = makeManager()
+        _ = manager.newTab()
+        let kept = manager.newTab()
+        _ = manager.newTab()
+
+        manager.closeOthers(than: kept.id)
+        #expect(manager.tabs.map(\.id) == [kept.id])
+        #expect(manager.selectedTabID == kept.id)
+    }
+
+    @Test func reopensMostRecentlyClosedTabWithAddress() async throws {
+        let manager = makeManager()
+        _ = manager.newTab()
+        let closed = manager.newTab(url: URL(string: "about:blank#closed"))
+        try await waitForURL(of: closed)
+
+        manager.close(closed.id)
+        let reopened = try #require(manager.reopenClosedTab())
+        try await waitForURL(of: reopened)
+        #expect(reopened.url?.absoluteString == "about:blank#closed")
+        #expect(manager.selectedTabID == reopened.id)
+        #expect(manager.tabs.count == 2)
+        #expect(manager.reopenClosedTab() == nil)
+    }
+
+    @Test func blankTabIsNotRemembered() {
+        let manager = makeManager()
+        _ = manager.newTab()
+        manager.close(manager.newTab().id)
+        #expect(manager.reopenClosedTab() == nil)
+    }
+
+    private func waitForURL(of tab: Tab) async throws {
+        for _ in 0..<100 where tab.url == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try #require(tab.url != nil)
+    }
 }

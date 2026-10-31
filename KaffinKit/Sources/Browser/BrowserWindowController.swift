@@ -8,9 +8,11 @@ import Tabs
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let tabManager: TabManager
     private let webContainer = NSView()
+    private var newTabHost: NSHostingView<NewTabView>!
     private var chromeHost: NSHostingView<BrowserChromeView>!
     private var focusRequest = 0
     var onClose: ((BrowserWindowController) -> Void)?
+    var onNewWindow: (() -> Void)?
 
     init(factory: WebViewFactory) {
         tabManager = TabManager(factory: factory)
@@ -32,7 +34,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         tabManager.onSelectionChange = { [weak self] in self?.show($0) }
         tabManager.onLastTabClosed = { [weak self] in self?.window?.close() }
         tabManager.newTab()
-        focusAddressBar()
+        updateNewTabPage()
     }
 
     @available(*, unavailable)
@@ -45,7 +47,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         chromeHost = NSHostingView(rootView: makeChromeView())
         chromeHost.translatesAutoresizingMaskIntoConstraints = false
         webContainer.translatesAutoresizingMaskIntoConstraints = false
+        newTabHost = NSHostingView(rootView: NewTabView { [weak self] in self?.submitAddress($0) })
+        newTabHost.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(webContainer)
+        content.addSubview(newTabHost)
         content.addSubview(chromeHost)
         NSLayoutConstraint.activate([
             chromeHost.topAnchor.constraint(equalTo: content.topAnchor),
@@ -56,6 +61,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             webContainer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             webContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             webContainer.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            newTabHost.topAnchor.constraint(equalTo: webContainer.topAnchor),
+            newTabHost.leadingAnchor.constraint(equalTo: webContainer.leadingAnchor),
+            newTabHost.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor),
+            newTabHost.bottomAnchor.constraint(equalTo: webContainer.bottomAnchor),
         ])
     }
 
@@ -71,6 +80,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         tab.webView.frame = webContainer.bounds
         tab.webView.autoresizingMask = [.width, .height]
         webContainer.addSubview(tab.webView)
+        if tab.url == nil {
+            focusAddressBar()
+        } else {
+            window?.makeFirstResponder(tab.webView)
+        }
+    }
+
+    /// Re-registers on every change, so the page tracks tab selection and URL without polling.
+    private func updateNewTabPage() {
+        let isBlank = withObservationTracking {
+            tabManager.selectedTab?.url == nil
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.updateNewTabPage() }
+        }
+        newTabHost.isHidden = !isBlank
     }
 
     private func submitAddress(_ text: String) {
@@ -90,7 +114,36 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func newTab(_ sender: Any?) {
         tabManager.newTab()
-        focusAddressBar()
+    }
+
+    @objc func newWindow(_ sender: Any?) {
+        onNewWindow?()
+    }
+
+    @objc func reopenClosedTab(_ sender: Any?) {
+        tabManager.reopenClosedTab()
+    }
+
+    @objc func selectNumberedTab(_ sender: NSMenuItem) {
+        // Cmd+9 always means the last tab, as in Chrome.
+        tabManager.selectTab(at: sender.tag == 8 ? tabManager.tabs.count - 1 : sender.tag)
+    }
+
+    @objc func zoomIn(_ sender: Any?) {
+        changeZoom(by: 0.1)
+    }
+
+    @objc func zoomOut(_ sender: Any?) {
+        changeZoom(by: -0.1)
+    }
+
+    @objc func resetZoom(_ sender: Any?) {
+        tabManager.selectedTab?.webView.pageZoom = 1
+    }
+
+    private func changeZoom(by delta: CGFloat) {
+        guard let webView = tabManager.selectedTab?.webView else { return }
+        webView.pageZoom = min(5, max(0.25, webView.pageZoom + delta))
     }
 
     @objc func closeTab(_ sender: Any?) {

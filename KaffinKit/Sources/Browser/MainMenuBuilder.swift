@@ -19,6 +19,7 @@ enum MainMenuBuilder {
             menu(L10n.string("menu.file"), [
                 item("tab.new", #selector(BrowserWindowController.newTab(_:)), "t"),
                 newWindow,
+                item("tab.reopen", #selector(BrowserWindowController.reopenClosedTab(_:)), "T"),
                 item("menu.focusAddress", #selector(BrowserWindowController.focusAddress(_:)), "l"),
                 .separator(),
                 item("tab.close", #selector(BrowserWindowController.closeTab(_:)), "w"),
@@ -36,6 +37,12 @@ enum MainMenuBuilder {
                 item("nav.reload", #selector(BrowserWindowController.reloadPage(_:)), "r"),
                 item("nav.back", #selector(BrowserWindowController.goBack(_:)), "["),
                 item("nav.forward", #selector(BrowserWindowController.goForward(_:)), "]"),
+                .separator(),
+                item("zoom.in", #selector(BrowserWindowController.zoomIn(_:)), "+"),
+                item("zoom.out", #selector(BrowserWindowController.zoomOut(_:)), "-"),
+                item("zoom.reset", #selector(BrowserWindowController.resetZoom(_:)), "0"),
+                .separator(),
+                appearanceItem(),
             ]),
             windowMenu(),
         ] {
@@ -52,9 +59,32 @@ enum MainMenuBuilder {
             .separator(),
             item("menu.nextTab", #selector(BrowserWindowController.selectNextTab(_:)), "}"),
             item("menu.previousTab", #selector(BrowserWindowController.selectPreviousTab(_:)), "{"),
-        ])
+        ] + (1...9).map { number in
+            let item = NSMenuItem(
+                title: String(format: L10n.string("menu.tabNumber"), number),
+                action: #selector(BrowserWindowController.selectNumberedTab(_:)),
+                keyEquivalent: String(number)
+            )
+            item.tag = number - 1
+            return item
+        })
         NSApp.windowsMenu = menu
         return menu
+    }
+
+    private static func appearanceItem() -> NSMenuItem {
+        let parent = NSMenuItem(title: L10n.string("appearance.title"), action: nil, keyEquivalent: "")
+        parent.submenu = menu(L10n.string("appearance.title"), AppearanceController.Mode.allCases.map { mode in
+            let item = NSMenuItem(
+                title: L10n.string(mode.titleKey),
+                action: #selector(AppearanceController.selectMode(_:)),
+                keyEquivalent: ""
+            )
+            item.target = AppearanceController.shared
+            item.representedObject = mode.rawValue
+            return item
+        })
+        return parent
     }
 
     private static func menu(_ title: String, _ items: [NSMenuItem]) -> NSMenu {

@@ -6,24 +6,37 @@ import Tabs
 /// Tab strip and toolbar, laid out after Chrome: the active tab merges into the toolbar below it.
 public struct BrowserChromeView: View {
     public static let height: CGFloat = 84
+    public static let bookmarksBarHeight: CGFloat = 32
 
     let tabManager: TabManager
+    let bookmarks: BookmarksModel
+    let isPrivate: Bool
     let focusRequest: Int
     let onSubmit: (String) -> Void
 
-    public init(tabManager: TabManager, focusRequest: Int, onSubmit: @escaping (String) -> Void) {
+    public init(
+        tabManager: TabManager,
+        bookmarks: BookmarksModel,
+        isPrivate: Bool,
+        focusRequest: Int,
+        onSubmit: @escaping (String) -> Void
+    ) {
         self.tabManager = tabManager
+        self.bookmarks = bookmarks
+        self.isPrivate = isPrivate
         self.focusRequest = focusRequest
         self.onSubmit = onSubmit
     }
 
     public var body: some View {
         VStack(spacing: 0) {
-            TabStripView(tabManager: tabManager)
+            TabStripView(tabManager: tabManager, isPrivate: isPrivate)
             toolbar
+            if bookmarks.isBarVisible {
+                BookmarksBarView(bookmarks: bookmarks) { tabManager.selectedTab?.load($0.url) }
+            }
             Divider()
         }
-        .frame(height: Self.height)
     }
 
     private var toolbar: some View {
@@ -57,16 +70,33 @@ public struct BrowserChromeView: View {
                 focusRequest: focusRequest,
                 onSubmit: onSubmit
             )
+            bookmarkButton(for: tab)
         }
         .padding(.horizontal, 14)
         .frame(height: 32)
         .glassEffect(in: Capsule())
     }
 
+    private func bookmarkButton(for tab: Tabs.Tab?) -> some View {
+        let isBookmarked = bookmarks.contains(tab?.url)
+        return Button {
+            guard let url = tab?.url else { return }
+            Task { await bookmarks.toggle(url: url, title: tab?.title) }
+        } label: {
+            Image(systemName: isBookmarked ? "star.fill" : "star").font(.system(size: 13))
+        }
+        .buttonStyle(.borderless)
+        .disabled(tab?.url == nil)
+        .accessibilityLabel(L10n.string(isBookmarked ? "bookmark.remove" : "bookmark.add"))
+    }
+
     private var mainMenu: some View {
         Menu {
             menuButton("tab.new", "newTab:")
             menuButton("window.new", "newWindow:")
+            menuButton("window.newPrivate", "newPrivateWindow:")
+            Divider()
+            menuButton("history.show", "showHistory:")
             Divider()
             menuButton("zoom.in", "zoomIn:")
             menuButton("zoom.out", "zoomOut:")
@@ -131,8 +161,43 @@ private struct TabDrag {
     var tabWidth: CGFloat
 }
 
+private struct BookmarksBarView: View {
+    let bookmarks: BookmarksModel
+    let onOpen: (BookmarkItem) -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            if bookmarks.items.isEmpty {
+                Text(L10n.string("bookmark.empty"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+            }
+            ForEach(bookmarks.items) { item in
+                Button {
+                    onOpen(item)
+                } label: {
+                    Text(item.title).font(.system(size: 12)).lineLimit(1).frame(maxWidth: 160)
+                }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 6)
+                .contextMenu {
+                    Button(L10n.string("bookmark.remove")) {
+                        Task { await bookmarks.remove(item) }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: BrowserChromeView.bookmarksBarHeight)
+        .background(ChromePalette.toolbar)
+    }
+}
+
 private struct TabStripView: View {
     let tabManager: TabManager
+    let isPrivate: Bool
 
     @State private var drag: TabDrag?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -161,6 +226,12 @@ private struct TabStripView: View {
             .padding(.leading, 4)
             .padding(.bottom, 3)
             Spacer(minLength: 40)
+            if isPrivate {
+                Label(L10n.string("window.private"), systemImage: "eye.slash")
+                    .font(.system(size: 12, weight: .medium))
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 10)
+            }
         }
         // Leaves room for the traffic-light buttons.
         .padding(.leading, 80)

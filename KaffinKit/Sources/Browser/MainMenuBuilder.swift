@@ -7,6 +7,10 @@ enum MainMenuBuilder {
     static func build(windowManager: WindowManager) -> NSMenu {
         let newWindow = item("window.new", #selector(WindowManager.newWindow(_:)), "n")
         newWindow.target = windowManager
+        let newPrivateWindow = item("window.newPrivate", #selector(WindowManager.newPrivateWindow(_:)), "N")
+        newPrivateWindow.target = windowManager
+        let showHistory = item("history.show", #selector(WindowManager.showHistory(_:)), "y")
+        showHistory.target = windowManager
 
         let mainMenu = NSMenu()
         for menu in [
@@ -19,6 +23,7 @@ enum MainMenuBuilder {
             menu(L10n.string("menu.file"), [
                 item("tab.new", #selector(BrowserWindowController.newTab(_:)), "t"),
                 newWindow,
+                newPrivateWindow,
                 item("tab.reopen", #selector(BrowserWindowController.reopenClosedTab(_:)), "T"),
                 item("menu.focusAddress", #selector(BrowserWindowController.focusAddress(_:)), "l"),
                 .separator(),
@@ -43,6 +48,11 @@ enum MainMenuBuilder {
                 item("zoom.reset", #selector(BrowserWindowController.resetZoom(_:)), "0"),
                 .separator(),
                 appearanceItem(),
+            ]),
+            menu(L10n.string("menu.history"), [showHistory]),
+            menu(L10n.string("menu.bookmarks"), [
+                item("bookmark.add", #selector(BrowserWindowController.toggleBookmark(_:)), "d"),
+                item("bookmark.toggleBar", #selector(BrowserWindowController.toggleBookmarksBar(_:)), "B"),
             ]),
             windowMenu(),
         ] {

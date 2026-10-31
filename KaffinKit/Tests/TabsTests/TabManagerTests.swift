@@ -140,6 +140,79 @@ struct TabManagerTests {
         #expect(manager.reopenClosedTab() == nil)
     }
 
+    @Test func restoresTabsLazilyWithSavedSelection() {
+        let manager = makeManager()
+        let first = URL(string: "https://example.com/one")!
+        let second = URL(string: "https://example.com/two")!
+
+        manager.restore(SessionWindow(tabs: [
+            SessionTab(url: first, title: "One", isSelected: false, interactionState: nil),
+            SessionTab(url: second, title: "Two", isSelected: true, interactionState: nil),
+        ]))
+
+        #expect(manager.tabs.map(\.url) == [first, second])
+        #expect(manager.tabs.map(\.title) == ["One", "Two"])
+        #expect(manager.selectedTab?.url == second)
+        // Only the selected tab may start loading; background tabs wait for selection.
+        #expect(manager.tabs[0].isAwaitingLoad)
+        #expect(!manager.tabs[1].isAwaitingLoad)
+    }
+
+    @Test func selectingRestoredTabStartsItsLoad() {
+        let manager = makeManager()
+        manager.restore(SessionWindow(tabs: [
+            SessionTab(url: URL(string: "about:blank#one")!, title: nil, isSelected: false, interactionState: nil),
+            SessionTab(url: URL(string: "about:blank#two")!, title: nil, isSelected: true, interactionState: nil),
+        ]))
+
+        manager.select(manager.tabs[0].id)
+        #expect(!manager.tabs[0].isAwaitingLoad)
+    }
+
+    @Test func snapshotKeepsOrderSelectionAndUnloadedTabs() {
+        let manager = makeManager()
+        let session = SessionWindow(tabs: [
+            SessionTab(url: URL(string: "about:blank#one")!, title: "One", isSelected: false, interactionState: Data([7])),
+            SessionTab(url: URL(string: "about:blank#two")!, title: "Two", isSelected: true, interactionState: nil),
+        ])
+        manager.restore(session)
+
+        let snapshot = manager.snapshot()
+        #expect(snapshot.tabs.map(\.url) == session.tabs.map(\.url))
+        #expect(snapshot.tabs.map(\.isSelected) == [false, true])
+        #expect(snapshot.tabs[0].interactionState == Data([7]))
+    }
+
+    @Test func snapshotLeavesOutBlankTabs() {
+        let manager = makeManager()
+        manager.newTab()
+        #expect(manager.snapshot().tabs.isEmpty)
+    }
+
+    @Test func changesNotifySessionSaver() {
+        let manager = makeManager()
+        var changes = 0
+        manager.onChange = { changes += 1 }
+
+        let first = manager.newTab()
+        let second = manager.newTab()
+        manager.select(first.id)
+        manager.move(first.id, to: 1)
+        manager.close(second.id)
+        #expect(changes >= 5)
+    }
+
+    @Test func loadedTabSnapshotCarriesWebKitState() async throws {
+        let manager = makeManager()
+        let tab = manager.newTab(url: URL(string: "about:blank#state"))
+        try await waitForURL(of: tab)
+        for _ in 0..<100 where tab.isLoading {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        #expect(manager.snapshot().tabs.first?.interactionState != nil)
+    }
+
     private func waitForURL(of tab: Tab) async throws {
         for _ in 0..<100 where tab.url == nil {
             try await Task.sleep(for: .milliseconds(20))

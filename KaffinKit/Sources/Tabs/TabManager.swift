@@ -12,6 +12,9 @@ public final class TabManager {
 
     @ObservationIgnored public var onSelectionChange: ((Tab?) -> Void)?
     @ObservationIgnored public var onLastTabClosed: (() -> Void)?
+    /// Fires for anything a saved session must reflect.
+    @ObservationIgnored public var onChange: (() -> Void)?
+    @ObservationIgnored public var onPageVisit: ((URL, String?) -> Void)?
 
     @ObservationIgnored private let factory: WebViewFactory
     @ObservationIgnored private var closedTabURLs: [URL] = []
@@ -40,16 +43,30 @@ public final class TabManager {
         return tab
     }
 
-    private func addTab(configuration: WKWebViewConfiguration?) -> Tab {
+    public func restore(_ window: SessionWindow) {
+        for session in window.tabs {
+            addTab(configuration: nil, restoring: session)
+        }
+        let selected = window.tabs.firstIndex(where: \.isSelected) ?? 0
+        if tabs.indices.contains(selected) { select(tabs[selected].id) }
+    }
+
+    public func snapshot() -> SessionWindow {
+        SessionWindow(tabs: tabs.compactMap { $0.sessionTab(isSelected: $0.id == selectedTabID) })
+    }
+
+    @discardableResult
+    private func addTab(configuration: WKWebViewConfiguration?, restoring session: SessionTab? = nil) -> Tab {
         let webView = factory.makeWebView(configuration: configuration)
         webView.navigationDelegate = navigationManager
         webView.uiDelegate = navigationManager
-        let tab = Tab(webView: webView, state: .background)
+        let tab = Tab(webView: webView, state: .background, restoring: session)
         if let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
             tabs.insert(tab, at: selectedIndex + 1)
         } else {
             tabs.append(tab)
         }
+        onChange?()
         return tab
     }
 
@@ -62,7 +79,9 @@ public final class TabManager {
         } else {
             tab.transition(to: .active)
         }
+        tab.startPendingLoad()
         onSelectionChange?(tab)
+        onChange?()
     }
 
     public func close(_ id: Tab.ID) {
@@ -73,6 +92,7 @@ public final class TabManager {
         tab.webView.stopLoading()
         tab.webView.navigationDelegate = nil
         tab.webView.uiDelegate = nil
+        onChange?()
 
         guard !tabs.isEmpty else {
             selectedTabID = nil
@@ -108,6 +128,7 @@ public final class TabManager {
         guard let from = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: from)
         tabs.insert(tab, at: min(index, tabs.count))
+        onChange?()
     }
 
     public func selectTab(at index: Int) {
@@ -129,6 +150,8 @@ public final class TabManager {
     }
 
     func handleLoadFinished(of tab: Tab) {
+        if let url = tab.webView.url { onPageVisit?(url, tab.webView.title) }
+        onChange?()
         guard tab.state == .restoring else { return }
         tab.transition(to: tab.id == selectedTabID ? .active : .background)
     }

@@ -7,15 +7,23 @@ import Tabs
 @MainActor
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let tabManager: TabManager
+    private let bookmarks: BookmarksModel
+    let isPrivate: Bool
     private let webContainer = NSView()
     private var newTabHost: NSHostingView<NewTabView>!
     private var chromeHost: NSHostingView<BrowserChromeView>!
     private var focusRequest = 0
     var onClose: ((BrowserWindowController) -> Void)?
     var onNewWindow: (() -> Void)?
+    var onNewPrivateWindow: (() -> Void)?
+    var onShowHistory: (() -> Void)?
+    private var chromeHeight: NSLayoutConstraint!
 
-    init(factory: WebViewFactory) {
+    /// Private windows get their own factory, and the caller wires no session or history saving.
+    init(factory: WebViewFactory, bookmarks: BookmarksModel, isPrivate: Bool, session: SessionWindow?) {
         tabManager = TabManager(factory: factory)
+        self.bookmarks = bookmarks
+        self.isPrivate = isPrivate
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -26,15 +34,35 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.minSize = NSSize(width: 500, height: 300)
         window.center()
-        window.setFrameAutosaveName("BrowserWindow")
+        if isPrivate {
+            window.appearance = NSAppearance(named: .darkAqua)
+        } else {
+            window.setFrameAutosaveName("BrowserWindow")
+        }
         super.init(window: window)
 
         window.delegate = self
         installContent(in: window)
         tabManager.onSelectionChange = { [weak self] in self?.show($0) }
         tabManager.onLastTabClosed = { [weak self] in self?.window?.close() }
-        tabManager.newTab()
+        if let session, !session.tabs.isEmpty {
+            tabManager.restore(session)
+        } else {
+            tabManager.newTab()
+        }
         updateNewTabPage()
+        updateChromeHeight()
+    }
+
+    var snapshot: SessionWindow { tabManager.snapshot() }
+
+    func trackChanges(onChange: @escaping () -> Void, onPageVisit: @escaping (URL, String?) -> Void) {
+        tabManager.onChange = onChange
+        tabManager.onPageVisit = onPageVisit
+    }
+
+    func open(_ url: URL) {
+        tabManager.newTab(url: url)
     }
 
     @available(*, unavailable)
@@ -46,6 +74,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard let content = window.contentView else { return }
         chromeHost = NSHostingView(rootView: makeChromeView())
         chromeHost.translatesAutoresizingMaskIntoConstraints = false
+        chromeHeight = chromeHost.heightAnchor.constraint(equalToConstant: BrowserChromeView.height)
         webContainer.translatesAutoresizingMaskIntoConstraints = false
         newTabHost = NSHostingView(rootView: NewTabView { [weak self] in self?.submitAddress($0) })
         newTabHost.translatesAutoresizingMaskIntoConstraints = false
@@ -56,7 +85,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             chromeHost.topAnchor.constraint(equalTo: content.topAnchor),
             chromeHost.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             chromeHost.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            chromeHost.heightAnchor.constraint(equalToConstant: BrowserChromeView.height),
+            chromeHeight,
             webContainer.topAnchor.constraint(equalTo: chromeHost.bottomAnchor),
             webContainer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             webContainer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
@@ -69,7 +98,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func makeChromeView() -> BrowserChromeView {
-        BrowserChromeView(tabManager: tabManager, focusRequest: focusRequest) { [weak self] in
+        BrowserChromeView(
+            tabManager: tabManager,
+            bookmarks: bookmarks,
+            isPrivate: isPrivate,
+            focusRequest: focusRequest
+        ) { [weak self] in
             self?.submitAddress($0)
         }
     }
@@ -97,6 +131,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         newTabHost.isHidden = !isBlank
     }
 
+    private func updateChromeHeight() {
+        let isBarVisible = withObservationTracking {
+            bookmarks.isBarVisible
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.updateChromeHeight() }
+        }
+        chromeHeight.constant = BrowserChromeView.height + (isBarVisible ? BrowserChromeView.bookmarksBarHeight : 0)
+    }
+
     private func submitAddress(_ text: String) {
         guard let url = AddressResolver.resolve(text), let tab = tabManager.selectedTab else { return }
         tab.load(url)
@@ -118,6 +161,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func newWindow(_ sender: Any?) {
         onNewWindow?()
+    }
+
+    @objc func newPrivateWindow(_ sender: Any?) {
+        onNewPrivateWindow?()
+    }
+
+    @objc func showHistory(_ sender: Any?) {
+        onShowHistory?()
+    }
+
+    @objc func toggleBookmark(_ sender: Any?) {
+        guard let tab = tabManager.selectedTab, let url = tab.url else { return }
+        Task { await bookmarks.toggle(url: url, title: tab.title) }
+    }
+
+    @objc func toggleBookmarksBar(_ sender: Any?) {
+        bookmarks.isBarVisible.toggle()
     }
 
     @objc func reopenClosedTab(_ sender: Any?) {

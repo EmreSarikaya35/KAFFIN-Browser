@@ -1,3 +1,4 @@
+import BrowserCore
 import Foundation
 import Observation
 import WebKit
@@ -15,13 +16,25 @@ public final class Tab: Identifiable {
     public private(set) var canGoForward = false
 
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    @ObservationIgnored private var pending: SessionTab?
 
-    init(webView: WKWebView, state: TabLifecycleState) {
+    /// True for a restored tab whose page has not started loading yet.
+    public var isAwaitingLoad: Bool { pending != nil }
+
+    init(webView: WKWebView, state: TabLifecycleState, restoring session: SessionTab? = nil) {
         self.webView = webView
         self.state = state
+        pending = session
+        title = session?.title
+        url = session?.url
         observations = [
-            observe(\.title) { $0.title = $1.title.flatMap { $0.isEmpty ? nil : $0 } },
-            observe(\.url) { $0.url = $1.url },
+            observe(\.title) { tab, webView in
+                // A restored tab keeps its saved title until its page starts loading.
+                if !tab.isAwaitingLoad { tab.title = webView.title.flatMap { $0.isEmpty ? nil : $0 } }
+            },
+            observe(\.url) { tab, webView in
+                if !tab.isAwaitingLoad { tab.url = webView.url }
+            },
             observe(\.isLoading) { $0.isLoading = $1.isLoading },
             observe(\.canGoBack) { $0.canGoBack = $1.canGoBack },
             observe(\.canGoForward) { $0.canGoForward = $1.canGoForward },
@@ -49,6 +62,24 @@ public final class Tab: Identifiable {
     }
 
     public func load(_ url: URL) {
+        pending = nil
         webView.load(URLRequest(url: url))
+    }
+
+    func startPendingLoad() {
+        guard let pending else { return }
+        self.pending = nil
+        if let state = pending.interactionState {
+            webView.interactionState = state
+        } else {
+            webView.load(URLRequest(url: pending.url))
+        }
+    }
+
+    func sessionTab(isSelected: Bool) -> SessionTab? {
+        guard let url else { return nil }
+        // WebKit documents the value as opaque; a test pins that it is Data on the supported macOS.
+        let state = pending?.interactionState ?? webView.interactionState as? Data
+        return SessionTab(url: url, title: title, isSelected: isSelected, interactionState: state)
     }
 }

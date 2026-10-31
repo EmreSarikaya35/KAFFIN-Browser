@@ -12,6 +12,15 @@ public final class WebViewFactory {
         dataStore = WKWebsiteDataStore(forIdentifier: profileID)
     }
 
+    private init(dataStore: WKWebsiteDataStore) {
+        self.dataStore = dataStore
+    }
+
+    /// Website data lives only as long as the returned factory and its WebViews.
+    public static func privateSession() -> WebViewFactory {
+        WebViewFactory(dataStore: .nonPersistent())
+    }
+
     /// WKWebView's default user agent has no Safari token, which some sites read as an embedded view.
     public static var userAgentToken: String {
         let os = ProcessInfo.processInfo.operatingSystemVersion

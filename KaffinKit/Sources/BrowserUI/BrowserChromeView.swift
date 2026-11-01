@@ -224,7 +224,7 @@ public struct BrowserChromeView: View {
             menuButton("window.new", "newWindow:")
             menuButton("window.newPrivate", "newPrivateWindow:")
             Divider()
-            menuButton("history.show", "showHistory:")
+            menuButton("history.title", "showHistory:")
             menuButton("menu.passwords", "showPasswords:")
             if extensions != nil { menuButton("extensions.title", "showExtensions:") }
             menuButton("menu.settings", "showSettings:")

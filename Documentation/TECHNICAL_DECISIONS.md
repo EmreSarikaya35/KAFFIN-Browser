@@ -115,3 +115,7 @@ Swift Testing needs the full Xcode toolchain because Command Line Tools lack its
 ## Internal Pages
 
 Settings and History are `kaffin://` pages drawn by SwiftUI over a tab, not separate windows. `Tab.load` is the single entry point, so reopening, duplicating, and restoring such a tab reuse the normal paths. Websites cannot reach them, because `LinkPolicy` blocks the scheme. Extensions are managed in a toolbar popover.
+
+## Browser Import
+
+Importers read a private copy of another browser's files and never write to the originals. Read access comes from sandbox exceptions for each browser's folder, which is a permanent privilege of the app. macOS 27 can still block a folder with its System Policy, as it does for Chrome, and KAFFIN then sends the user to Full Disk Access instead of working around it. Chromium passwords use the browser's Keychain item, so macOS asks first. Firefox passwords stay on CSV, because no real Firefox profile was available to verify decryption. Passwords already in KAFFIN are never replaced.

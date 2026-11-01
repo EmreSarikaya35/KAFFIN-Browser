@@ -15,6 +15,7 @@ A lightweight native browser for macOS, built with Swift, AppKit, SwiftUI, and W
 - **Passwords:** stored in the macOS Keychain, and saved or filled only after a click
 - **Privacy:** separate profiles, and private windows that store nothing and run no extensions
 - **Site safety:** per-site camera, microphone, and location permissions, fraud warnings, and safer handling of links that open other apps
+- **Import:** bookmarks, history, and passwords from Chromium browsers, bookmarks and history from Firefox, and Safari export files
 - **Everyday tools:** bookmarks with HTML import and export, history, resumable downloads, find, print, and zoom
 
 ## Install
@@ -49,6 +50,7 @@ Scripts/make-dmg.sh          # build a DMG in build/, from the repository root
 
 - Some Chrome extensions do not work, because WebKit's extension support differs from Chrome's. See [EXTENSION_COMPATIBILITY.md](Documentation/EXTENSION_COMPATIBILITY.md).
 - Sites see WebKit, not Chrome, so a site that only supports Chrome may refuse or misbehave.
+- Importing from Chrome may need Full Disk Access for KAFFIN, because macOS protects that folder. Firefox passwords need a CSV export.
 - Location reaches the main page only, not embedded frames.
 - The interface is in English only, and the app has no icon yet.
 - VoiceOver support has been checked through the accessibility tree, not in real use.

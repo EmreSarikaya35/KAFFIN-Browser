@@ -282,8 +282,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         pageHosts.values.forEach { $0.isHidden = true }
         guard let page, let makeInternalPage, let content = window?.contentView else { return }
-        let host = pageHosts[page] ?? NSHostingView(rootView: makeInternalPage(page))
-        if pageHosts[page] == nil {
+        if let host = pageHosts[page] {
+            host.isHidden = false
+        } else {
+            let host = NSHostingView(rootView: makeInternalPage(page))
+            // A page fills the window. Without this, tall content stretches the window to fit it.
+            host.sizingOptions = []
             pageHosts[page] = host
             host.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(host, positioned: .above, relativeTo: newTabHost)
@@ -294,7 +298,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 host.bottomAnchor.constraint(equalTo: webContainer.bottomAnchor),
             ])
         }
-        host.isHidden = false
         onInternalPageShown?(page)
     }
 

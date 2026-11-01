@@ -25,6 +25,7 @@ final class ProfileSession {
     private var isPrepared = false
     let downloads: DownloadManager
     let settingsNavigation = SettingsNavigation()
+    let browserImport: BrowserImportModel
     var saveTask: Task<Void, Never>?
 
     init(id: UUID) {
@@ -43,6 +44,16 @@ final class ProfileSession {
         passwords = PasswordsModel(store: credentials)
         favicons = FaviconLoader(store: database)
         sitePermissions = SitePermissionsModel(store: database)
+        let importer = BrowserImporter(database: database, credentials: credentials) { [bookmarks, history, passwords] in
+            await bookmarks.reload()
+            await history.reload()
+            await passwords.reload()
+        }
+        browserImport = BrowserImportModel(
+            detect: BrowserImporter.installedBrowsers,
+            importBrowser: { try await importer.run($0) },
+            importFile: { try await importer.run(file: $0) }
+        )
     }
 
     /// Loads saved state once, before the profile's first window opens.

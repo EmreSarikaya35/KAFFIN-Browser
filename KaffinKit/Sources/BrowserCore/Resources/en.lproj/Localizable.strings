@@ -201,3 +201,14 @@
 "menu.minimize" = "Minimize";
 "menu.nextTab" = "Next Tab";
 "menu.previousTab" = "Previous Tab";
+"settings.import" = "Import Data";
+"import.detail" = "Copies bookmarks, history, and saved passwords into this profile. Your other browser is not changed. macOS may ask you to allow access to that browser's passwords.";
+"import.none" = "No supported browser data was found.";
+"import.action" = "Import";
+"import.fileDetail" = "For Safari, use File > Export Browsing Data and choose the ZIP file. For Firefox passwords, export a CSV file from about:logins.";
+"import.file" = "Choose File…";
+"import.failed" = "The import could not finish. Close the other browser and try again.";
+"import.done" = "Imported. Bookmarks: %1$d, history items: %2$d, passwords: %3$d.";
+"import.diskAccess" = "macOS protects this browser's data. Turn on KAFFIN under Full Disk Access, reopen KAFFIN, and import again.";
+"import.openDiskAccess" = "Open Full Disk Access";
+"import.passwordsFailed" = "Some passwords could not be read. Export them to a CSV file from the other browser and choose it above.";

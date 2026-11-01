@@ -114,6 +114,35 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
         }
     }
 
+    /// Importing the same browser twice changes nothing, because counts keep the higher value instead of adding up.
+    public func importHistory(_ entries: [HistoryEntry]) async throws -> Int {
+        try await writer.write { db in
+            let before = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM historyURLs") ?? 0
+            for entry in entries {
+                let address = entry.url.absoluteString
+                try db.execute(
+                    sql: """
+                    INSERT INTO historyURLs (url, title, visitCount, lastVisit, host) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(url) DO UPDATE SET
+                        title = COALESCE(title, excluded.title),
+                        visitCount = MAX(visitCount, excluded.visitCount),
+                        lastVisit = MAX(lastVisit, excluded.lastVisit)
+                    """,
+                    arguments: [address, entry.title, entry.visitCount, entry.lastVisit, SiteMatch.siteHost(of: entry.url)]
+                )
+                try db.execute(
+                    sql: """
+                    INSERT INTO historyVisits (historyURLId, visitedAt)
+                    SELECT id, ? FROM historyURLs WHERE url = ?
+                    AND NOT EXISTS (SELECT 1 FROM historyVisits WHERE historyURLId = historyURLs.id)
+                    """,
+                    arguments: [entry.lastVisit, address]
+                )
+            }
+            return (try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM historyURLs") ?? 0) - before
+        }
+    }
+
     /// WebKit often delivers a page's title after the page finishes loading.
     public func updateHistoryTitle(url: URL, title: String) async throws {
         try await writer.write { db in

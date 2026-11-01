@@ -262,7 +262,8 @@ public final class WindowManager: NSObject {
                 accent: accent,
                 performance: performance,
                 sitePermissions: session.sitePermissions,
-                passwords: session.passwords
+                passwords: session.passwords,
+                browserImport: session.browserImport
             ) { [weak self] in
                 self?.setAsDefaultBrowser(nil)
             })

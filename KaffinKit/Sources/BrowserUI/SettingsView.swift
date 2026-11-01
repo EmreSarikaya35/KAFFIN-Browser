@@ -8,6 +8,7 @@ public enum SettingsPane: Hashable, Sendable {
     case passwords
     case performance
     case sitePermissions
+    case importData
 }
 
 @MainActor
@@ -24,6 +25,7 @@ public struct SettingsView: View {
     let performance: PerformanceSettings
     let sitePermissions: SitePermissionsModel
     let passwords: PasswordsModel
+    let browserImport: BrowserImportModel
     let onSetDefault: () -> Void
 
     public init(
@@ -33,6 +35,7 @@ public struct SettingsView: View {
         performance: PerformanceSettings,
         sitePermissions: SitePermissionsModel,
         passwords: PasswordsModel,
+        browserImport: BrowserImportModel,
         onSetDefault: @escaping () -> Void
     ) {
         self.navigation = navigation
@@ -41,6 +44,7 @@ public struct SettingsView: View {
         self.performance = performance
         self.sitePermissions = sitePermissions
         self.passwords = passwords
+        self.browserImport = browserImport
         self.onSetDefault = onSetDefault
     }
 
@@ -51,6 +55,7 @@ public struct SettingsView: View {
         (.passwords, "settings.passwords", "key"),
         (.performance, "settings.performance", "gauge.with.dots.needle.67percent"),
         (.sitePermissions, "settings.sitePermissions", "lock.shield"),
+        (.importData, "settings.import", "square.and.arrow.down"),
     ]
 
     public var body: some View {
@@ -102,6 +107,7 @@ public struct SettingsView: View {
         case .passwords: PasswordsSettingsView(model: passwords)
         case .performance: PerformanceSettingsView(settings: performance)
         case .sitePermissions: SitePermissionsSettingsView(model: sitePermissions)
+        case .importData: ImportSettingsView(model: browserImport)
         }
     }
 }

@@ -738,7 +738,7 @@ struct WebKitIntegrationTests {
     }
 
     @Test(arguments: [
-        "webView:decidePolicyForNavigationAction:decisionHandler:",
+        "webView:decidePolicyForNavigationAction:preferences:decisionHandler:",
         "webView:decidePolicyForNavigationResponse:decisionHandler:",
         "webView:didReceiveAuthenticationChallenge:completionHandler:",
         "webView:didFailProvisionalNavigation:withError:",
@@ -946,6 +946,52 @@ struct WebKitIntegrationTests {
         try await wait("page loaded") { tab.title == "Framed" && !tab.isLoading }
         try await Task.sleep(for: .milliseconds(300))
         #expect(tab.loginPrompt == nil)
+    }
+
+    private func scriptRan(allowsJavaScript: Bool) async throws -> Bool {
+        let settings = BrowserPreferences.shared
+        settings.allowsJavaScript = allowsJavaScript
+        defer { settings.allowsJavaScript = true }
+        let tab = manager.newTab()
+        tab.webView.loadHTMLString("<title>page</title><script>document.title = 'ran'</script>", baseURL: URL(string: "https://example.com/"))
+        try await wait("page finished") { tab.title != nil }
+        try await Task.sleep(for: .milliseconds(100))
+        return tab.title == "ran"
+    }
+
+    @Test func javaScriptSettingControlsPageScripts() async throws {
+        #expect(try await scriptRan(allowsJavaScript: true))
+        #expect(try await !scriptRan(allowsJavaScript: false))
+    }
+
+    @Test func pageZoomSettingReachesNewTabs() {
+        let settings = BrowserPreferences.shared
+        settings.pageZoom = 1.5
+        defer { settings.pageZoom = 1 }
+
+        #expect(manager.newTab().webView.pageZoom == 1.5)
+    }
+
+    @Test func passwordOffersFollowTheirSettings() async throws {
+        let settings = BrowserPreferences.shared
+        let store = InMemoryCredentialStore()
+        let login = SavedLogin(origin: "http://127.0.0.1", username: "ada")
+        try await store.save(login, password: "secret")
+        let manager = TabManager(factory: .privateSession(), credentials: store)
+        let tab = manager.newTab()
+
+        settings.offersToSavePasswords = false
+        settings.offersToFillPasswords = false
+        defer {
+            settings.offersToSavePasswords = true
+            settings.offersToFillPasswords = true
+        }
+        await manager.offerToSave(login, password: "changed", on: tab)
+        #expect(tab.loginPrompt == nil)
+
+        settings.offersToSavePasswords = true
+        await manager.offerToSave(login, password: "changed", on: tab)
+        #expect(tab.loginPrompt != nil)
     }
 
     @Test func internalPageOpensInATabWithoutTouchingTheWeb() {

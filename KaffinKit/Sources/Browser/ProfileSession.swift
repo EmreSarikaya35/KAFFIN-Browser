@@ -6,6 +6,7 @@ import Extensions
 import Foundation
 import OSLog
 import Persistence
+import WebKit
 
 /// Everything that belongs to one profile, so nothing here can leak into another profile's windows.
 @MainActor
@@ -44,8 +45,9 @@ final class ProfileSession {
         passwords = PasswordsModel(store: credentials)
         favicons = FaviconLoader(store: database)
         sitePermissions = SitePermissionsModel(store: database)
-        let importer = BrowserImporter(database: database, credentials: credentials) { [bookmarks, history, passwords] in
+        let importer = BrowserImporter(database: database, credentials: credentials) { [bookmarks, history, passwords] summary in
             await bookmarks.reload()
+            if summary.bookmarks > 0 { bookmarks.isBarVisible = true }
             await history.reload()
             await passwords.reload()
         }
@@ -78,6 +80,18 @@ final class ProfileSession {
             detail: detail.isEmpty ? L10n.string("extensions.noPermissions") : detail,
             action: L10n.string("extensions.approve")
         )
+    }
+
+    func clearData(_ request: ClearDataRequest) async {
+        if request.history {
+            try? await database?.deleteHistory(since: request.since)
+            await history.reload()
+        }
+        let cache: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeFetchCache]
+        var types: Set<String> = request.cache ? cache : []
+        if request.siteData { types.formUnion(WKWebsiteDataStore.allWebsiteDataTypes().subtracting(cache)) }
+        guard !types.isEmpty else { return }
+        await factory.dataStore.removeData(ofTypes: types, modifiedSince: request.since)
     }
 
     func makeSuggestions(includingHistory: Bool) -> SuggestionsModel {

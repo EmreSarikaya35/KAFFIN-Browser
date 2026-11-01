@@ -52,9 +52,20 @@ public final class WindowManager: NSObject {
             for profile in profiles.profiles {
                 let session = session(for: profile.id)
                 await session.prepare()
-                await loadSession(of: session).forEach { openWindow(in: session, restoring: $0) }
+                if BrowserPreferences.shared.startup == .restore {
+                    await loadSession(of: session).forEach { openWindow(in: session, restoring: $0) }
+                }
             }
-            if controllers.isEmpty, pendingURLs.isEmpty { openWindow() }
+            let pages = BrowserPreferences.shared.startup == .pages ? BrowserPreferences.shared.startupURLs : []
+            if controllers.isEmpty, pendingURLs.isEmpty {
+                if pages.isEmpty {
+                    openWindow()
+                } else {
+                    openWindow(in: frontSession, restoring: SessionWindow(tabs: pages.enumerated().map { index, url in
+                        SessionTab(url: url, title: nil, isSelected: index == 0, interactionState: nil)
+                    }))
+                }
+            }
             isStarted = true
             pendingURLs.forEach(openInFrontWindow)
             pendingURLs = []
@@ -253,6 +264,17 @@ public final class WindowManager: NSObject {
         open(InternalPage.history.url, in: session)
     }
 
+    /// Asks only when quitting would close more than one tab.
+    public func confirmQuit() -> Bool {
+        let tabs = controllers.reduce(0) { $0 + $1.tabs.tabs.count }
+        guard BrowserPreferences.shared.warnsBeforeQuitting, tabs > 1 else { return true }
+        return Prompts.confirm(
+            String(format: L10n.string("settings.quitConfirm"), tabs),
+            detail: L10n.string("settings.quitDetail"),
+            action: L10n.string("settings.quitAction")
+        )
+    }
+
     private func makeInternalPage(_ page: InternalPage, of session: ProfileSession) -> AnyView {
         switch page {
         case .settings:
@@ -263,7 +285,9 @@ public final class WindowManager: NSObject {
                 performance: performance,
                 sitePermissions: session.sitePermissions,
                 passwords: session.passwords,
-                browserImport: session.browserImport
+                browserImport: session.browserImport,
+                bookmarks: session.bookmarks,
+                onClearData: { [weak session] request in await session?.clearData(request) }
             ) { [weak self] in
                 self?.setAsDefaultBrowser(nil)
             })

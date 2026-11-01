@@ -59,9 +59,8 @@ public final class WebViewFactory {
         configuration.websiteDataStore = dataStore
         configuration.webExtensionController = extensionController
         configuration.applicationNameForUserAgent = Self.userAgentToken
-        configuration.preferences.isFraudulentWebsiteWarningEnabled = true
         configuration.preferences.isElementFullscreenEnabled = true
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        BrowserPreferences.shared.apply(to: configuration.preferences)
         return configuration
     }
 
@@ -70,6 +69,7 @@ public final class WebViewFactory {
         let webView = BrowserWebView(frame: .zero, configuration: configuration ?? makeConfiguration())
         webView.extraMenuItems = { [weak self] in self?.pageMenuItems?($0) ?? [] }
         webView.allowsBackForwardNavigationGestures = true
+        webView.pageZoom = BrowserPreferences.shared.pageZoom
         #if DEBUG
         webView.isInspectable = true
         #endif

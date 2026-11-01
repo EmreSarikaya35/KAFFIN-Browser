@@ -15,7 +15,8 @@ A lightweight native browser for macOS, built with Swift, AppKit, SwiftUI, and W
 - **Passwords:** stored in the macOS Keychain, and saved or filled only after a click
 - **Privacy:** separate profiles, and private windows that store nothing and run no extensions
 - **Site safety:** per-site camera, microphone, and location permissions, fraud warnings, and safer handling of links that open other apps
-- **Import:** bookmarks, history, and passwords from Chromium browsers, bookmarks and history from Firefox, and Safari export files
+- **Import:** browser data from Chromium browsers and Firefox, password CSV files, bookmark HTML files, and Safari export files
+- **Settings:** startup pages, theme, Home button, page zoom, HTTPS upgrades, JavaScript, Lockdown Mode, clearing browsing data, download location, and more
 - **Everyday tools:** bookmarks with HTML import and export, history, resumable downloads, find, print, and zoom
 
 ## Install

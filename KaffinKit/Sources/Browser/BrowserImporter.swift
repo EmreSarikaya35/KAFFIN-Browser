@@ -8,12 +8,13 @@ import Persistence
 @MainActor
 final class BrowserImporter {
     private static let logger = Logger(subsystem: "com.kaffin.browser", category: "BrowserImporter")
+    private nonisolated static let maximumFileSize = 200_000_000
 
     private let database: ProfileDatabase?
     private let credentials: KeychainCredentialStore
-    private let onFinish: () async -> Void
+    private let onFinish: (ImportSummary) async -> Void
 
-    init(database: ProfileDatabase?, credentials: KeychainCredentialStore, onFinish: @escaping () async -> Void) {
+    init(database: ProfileDatabase?, credentials: KeychainCredentialStore, onFinish: @escaping (ImportSummary) async -> Void) {
         self.database = database
         self.credentials = credentials
         self.onFinish = onFinish
@@ -99,6 +100,9 @@ final class BrowserImporter {
     }
 
     private nonisolated static func read(file: URL) throws -> ImportedData {
+        guard try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0 <= maximumFileSize else {
+            throw CocoaError(.fileReadTooLarge)
+        }
         var data = ImportedData()
         switch file.pathExtension.lowercased() {
         case "csv":
@@ -160,7 +164,7 @@ final class BrowserImporter {
             Self.logger.error("Could not save imported passwords: \(error.localizedDescription)")
             summary.couldNotReadPasswords = true
         }
-        await onFinish()
+        await onFinish(summary)
         return summary
     }
 }

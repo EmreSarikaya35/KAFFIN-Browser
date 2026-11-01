@@ -109,6 +109,35 @@ struct BrowserImportReaderTests {
         } throws: { !BrowserImportFormat.isAccessDenied($0) }
     }
 
+    @Test func clearingARangeKeepsOlderVisits() async throws {
+        let database = try ProfileDatabase.inMemory()
+        let both = try #require(URL(string: "https://both.example/"))
+        let old = try #require(URL(string: "https://old.example/"))
+        let new = try #require(URL(string: "https://new.example/"))
+        try await database.recordVisit(url: both, title: "Both", at: Date(timeIntervalSince1970: 100))
+        try await database.recordVisit(url: both, title: "Both", at: Date(timeIntervalSince1970: 300))
+        try await database.recordVisit(url: old, title: "Old", at: Date(timeIntervalSince1970: 100))
+        try await database.recordVisit(url: new, title: "New", at: Date(timeIntervalSince1970: 300))
+
+        try await database.deleteHistory(since: Date(timeIntervalSince1970: 200))
+
+        let stored = try await database.recentHistory(limit: 10)
+        #expect(Set(stored.map(\.url)) == [both, old])
+        let kept = try #require(stored.first { $0.url == both })
+        #expect(kept.visitCount == 1)
+        #expect(kept.lastVisit == Date(timeIntervalSince1970: 100))
+    }
+
+    @Test func clearingAllTimeLeavesNothing() async throws {
+        let database = try ProfileDatabase.inMemory()
+        try await database.recordVisit(url: try #require(URL(string: "https://a.example/")), title: "A", at: .now)
+
+        try await database.deleteHistory(since: .distantPast)
+
+        #expect(try await database.recentHistory(limit: 10).isEmpty)
+        #expect(try await database.visitCount() == 0)
+    }
+
     @Test func importingHistoryTwiceChangesNothing() async throws {
         let database = try ProfileDatabase.inMemory()
         let date = Date(timeIntervalSince1970: 1_000_000)

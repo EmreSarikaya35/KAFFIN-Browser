@@ -6,6 +6,7 @@ import WebKit
 /// Central WebKit delegate for one window's tabs.
 @MainActor
 final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
+    private var upgradedURLs: Set<URL> = []
     private static let logger = Logger(subsystem: "com.kaffin.browser", category: "Navigation")
 
     private unowned let tabManager: TabManager
@@ -61,10 +62,25 @@ final class NavigationManager: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     func webView(
         _ webView: WKWebView,
-        decidePolicyFor action: WKNavigationAction
-    ) async -> WKNavigationActionPolicy {
+        decidePolicyFor action: WKNavigationAction,
+        preferences: WKWebpagePreferences
+    ) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
+        // Set per navigation, so a changed setting reaches open tabs on their next load.
+        let settings = BrowserPreferences.shared
+        preferences.allowsContentJavaScript = settings.allowsJavaScript
+        preferences.isLockdownModeEnabled = settings.usesLockdownMode
+        return (await policy(for: action, in: webView), preferences)
+    }
+
+    private func policy(for action: WKNavigationAction, in webView: WKWebView) async -> WKNavigationActionPolicy {
         if action.shouldPerformDownload { return .download }
         guard let url = action.request.url, let scheme = url.scheme else { return .allow }
+        // A site that redirects back to http would otherwise loop, so each address is tried once.
+        if BrowserPreferences.shared.alwaysUsesHTTPS, action.targetFrame?.isMainFrame != false,
+           let secure = BrowserPreferences.secureURL(for: url), upgradedURLs.insert(url).inserted {
+            webView.load(URLRequest(url: secure))
+            return .cancel
+        }
         let decision = LinkPolicy.decision(
             scheme: scheme,
             isMainFrame: action.targetFrame?.isMainFrame != false,

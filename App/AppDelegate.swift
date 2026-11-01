@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowManager.openURLs(urls)
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        windowManager.confirmQuit() ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         windowManager.saveSessionNow()
     }

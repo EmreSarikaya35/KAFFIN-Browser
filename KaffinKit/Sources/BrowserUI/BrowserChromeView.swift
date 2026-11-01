@@ -105,6 +105,9 @@ public struct BrowserChromeView: View {
             } else {
                 toolbarButton("arrow.clockwise", key: "nav.reload", enabled: tab != nil) { tab?.webView.reload() }
             }
+            if BrowserPreferences.shared.showsHomeButton {
+                toolbarButton("house", key: "nav.home", enabled: true) { goHome() }
+            }
             addressBar(for: tab)
             toolbarButton("arrow.down.circle", key: "downloads.title", enabled: true) {
                 isShowingDownloads.toggle()
@@ -114,7 +117,7 @@ public struct BrowserChromeView: View {
             }
             // Downloads are shared by all windows, so only the focused one reacts.
             .onChange(of: downloads.items.count) { old, new in
-                if new > old, activeState == .key { isShowingDownloads = true }
+                if new > old, activeState == .key, BrowserPreferences.shared.showsDownloadsWhenStarted { isShowingDownloads = true }
             }
             if let extensions {
                 ForEach(extensions.entries.filter { $0.isEnabled && $0.isPinned }) { extensionButton($0, extensions) }
@@ -205,6 +208,14 @@ public struct BrowserChromeView: View {
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(entry.badge.isEmpty ? entry.name : "\(entry.name), \(entry.badge)")
+    }
+
+    private func goHome() {
+        if let url = AddressResolver.resolve(BrowserPreferences.shared.homePage, searchEngine: search.engine) {
+            tabManager.selectedTab?.load(url)
+        } else {
+            tabManager.newTab()
+        }
     }
 
     private var mainMenu: some View {

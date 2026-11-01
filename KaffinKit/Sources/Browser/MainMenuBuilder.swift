@@ -105,9 +105,9 @@ enum MainMenuBuilder {
 
     private static func appearanceItem() -> NSMenuItem {
         let parent = NSMenuItem(title: L10n.string("appearance.title"), action: nil, keyEquivalent: "")
-        parent.submenu = menu(L10n.string("appearance.title"), AppearanceController.Mode.allCases.map { mode in
+        parent.submenu = menu(L10n.string("appearance.title"), AppTheme.allCases.map { mode in
             let item = NSMenuItem(
-                title: L10n.string(mode.titleKey),
+                title: L10n.string("appearance.\(mode.rawValue)"),
                 action: #selector(AppearanceController.selectMode(_:)),
                 keyEquivalent: ""
             )

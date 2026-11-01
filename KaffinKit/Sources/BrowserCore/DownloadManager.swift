@@ -37,6 +37,8 @@ public final class DownloadItem: Identifiable {
     @ObservationIgnored fileprivate var lastUpdate = Date.distantPast
     @ObservationIgnored fileprivate var progress: NSKeyValueObservation?
     @ObservationIgnored fileprivate var stagedFile: URL?
+    /// Set when the user picked the exact file, which replaces the usual folder and name rules.
+    @ObservationIgnored fileprivate var chosenTarget: URL?
 
     /// Progress fires per network chunk, so the visible numbers change only a few times a second.
     fileprivate func update(_ fraction: Double, received: Int64, total: Int64) {
@@ -82,7 +84,8 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     private var folder: URL? {
-        directory ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        directory ?? BrowserPreferences.shared.downloadFolder
+            ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
     }
 
     private func item(for download: WKDownload) -> DownloadItem? {
@@ -187,6 +190,17 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
         decideDestinationUsing response: URLResponse,
         suggestedFilename: String
     ) async -> URL? {
+        var chosenTarget: URL?
+        if directory == nil, BrowserPreferences.shared.asksWhereToSave {
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = suggestedFilename
+            panel.directoryURL = folder
+            guard panel.runModal() == .OK, let url = panel.url else {
+                if let item = item(for: download) { items.removeAll { $0 === item } }
+                return nil
+            }
+            chosenTarget = url
+        }
         let staging = Self.stagingRoot.appending(path: UUID().uuidString)
         do {
             try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
@@ -196,8 +210,9 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
         }
         let destination = DownloadRules.destination(for: suggestedFilename, in: staging)
         if let item = item(for: download) {
-            item.fileName = destination.lastPathComponent
+            item.fileName = chosenTarget?.lastPathComponent ?? destination.lastPathComponent
             item.stagedFile = destination
+            item.chosenTarget = chosenTarget
         }
         return destination
     }
@@ -211,7 +226,11 @@ public final class DownloadManager: NSObject, WKDownloadDelegate {
         defer { removeStagingFolder(of: item) }
         do {
             try markQuarantined(staged, source: download.originalRequest?.url)
-            let target = DownloadRules.destination(for: item.fileName, in: folder)
+            let isScoped = folder.startAccessingSecurityScopedResource()
+            defer { if isScoped { folder.stopAccessingSecurityScopedResource() } }
+            let target = item.chosenTarget ?? DownloadRules.destination(for: item.fileName, in: folder)
+            // The save panel already asked before replacing an existing file.
+            if item.chosenTarget != nil { try? FileManager.default.removeItem(at: target) }
             try FileManager.default.moveItem(at: staged, to: target)
             item.destination = target
             item.fileName = target.lastPathComponent

@@ -164,6 +164,10 @@ public final class SuggestionsModel {
 
     /// Pass false after a deletion, so Enter keeps exactly what is left in the field.
     public func update(text: String, engine: SearchEngine, allowsCompletion: Bool = true) async {
+        guard BrowserPreferences.shared.showsSuggestions else {
+            clear()
+            return
+        }
         generation += 1
         let current = generation
         let found = (try? await history?.searchHistory(text, limit: 20)) ?? []

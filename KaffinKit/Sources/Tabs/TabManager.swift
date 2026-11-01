@@ -328,14 +328,14 @@ public final class TabManager {
     }
 
     func offerSavedLogins(on tab: Tab, origin: String) async {
-        guard tab.loginPrompt == nil, let logins = try? await credentials?.logins(for: origin), !logins.isEmpty else {
+        guard BrowserPreferences.shared.offersToFillPasswords, tab.loginPrompt == nil, let logins = try? await credentials?.logins(for: origin), !logins.isEmpty else {
             return
         }
         if tab.loginPrompt == nil, tab.loginOrigin == origin { tab.loginPrompt = .fill(logins) }
     }
 
     func offerToSave(_ login: SavedLogin, password: String, on tab: Tab) async {
-        guard let credentials else { return }
+        guard let credentials, BrowserPreferences.shared.offersToSavePasswords else { return }
         let existing = try? await credentials.password(for: login)
         if existing != password {
             tab.loginPrompt = .save(login, password: password, isUpdate: existing != nil)

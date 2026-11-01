@@ -72,6 +72,33 @@ public struct ImportAccessDenied: Error {
     public init() {}
 }
 
+public enum ClearDataRange: String, CaseIterable, Sendable {
+    case hour, day, week, all
+
+    public func startDate(now: Date = .now) -> Date {
+        switch self {
+        case .hour: now.addingTimeInterval(-3600)
+        case .day: now.addingTimeInterval(-86_400)
+        case .week: now.addingTimeInterval(-604_800)
+        case .all: .distantPast
+        }
+    }
+}
+
+public struct ClearDataRequest: Sendable, Equatable {
+    public let history: Bool
+    public let siteData: Bool
+    public let cache: Bool
+    public let since: Date
+
+    public init(history: Bool, siteData: Bool, cache: Bool, since: Date) {
+        self.history = history
+        self.siteData = siteData
+        self.cache = cache
+        self.since = since
+    }
+}
+
 public struct ImportSummary: Sendable, Equatable {
     public var bookmarks = 0
     public var history = 0

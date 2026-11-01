@@ -114,6 +114,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             tabManager.newTab()
         }
         updateNewTabPage()
+        followPageSettings()
         updateChromeHeight()
         updateLoginPrompt()
         updateSuggestions()
@@ -299,6 +300,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             ])
         }
         onInternalPageShown?(page)
+    }
+
+    /// Settings that a running page can pick up reach every open tab at once.
+    private func followPageSettings() {
+        _ = withObservationTracking {
+            BrowserPreferences.shared.pageSettingsSignature
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.tabManager.tabs.forEach { BrowserPreferences.shared.apply(to: $0.webView) }
+                self.followPageSettings()
+            }
+        }
     }
 
     private func updateStoreOffer() {

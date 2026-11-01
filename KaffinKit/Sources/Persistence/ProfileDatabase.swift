@@ -214,6 +214,23 @@ public final class ProfileDatabase: BookmarkStoring, HistoryStoring, FaviconStor
         }
     }
 
+    /// Addresses visited before `date` as well keep their entry, with the later visits removed.
+    public func deleteHistory(since date: Date) async throws {
+        try await writer.write { db in
+            try db.execute(sql: "DELETE FROM historyVisits WHERE visitedAt >= ?", arguments: [date])
+            try db.execute(sql: """
+            DELETE FROM historyURLs WHERE lastVisit >= ?
+            AND NOT EXISTS (SELECT 1 FROM historyVisits WHERE historyURLId = historyURLs.id)
+            """, arguments: [date])
+            try db.execute(sql: """
+            UPDATE historyURLs SET
+                visitCount = (SELECT COUNT(*) FROM historyVisits WHERE historyURLId = historyURLs.id),
+                lastVisit = (SELECT MAX(visitedAt) FROM historyVisits WHERE historyURLId = historyURLs.id)
+            WHERE lastVisit >= ?
+            """, arguments: [date])
+        }
+    }
+
     public func visitCount() async throws -> Int {
         try await writer.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM historyVisits") ?? 0

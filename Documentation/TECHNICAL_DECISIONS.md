@@ -119,3 +119,7 @@ Settings and History are `kaffin://` pages drawn by SwiftUI over a tab, not sepa
 ## Browser Import
 
 Importers read a private copy of another browser's files and never write to the originals. Read access comes from sandbox exceptions for each browser's folder, which is a permanent privilege of the app. macOS 27 can still block a folder with its System Policy, as it does for Chrome, and KAFFIN then sends the user to Full Disk Access instead of working around it. Chromium passwords use the browser's Keychain item, so macOS asks first. Firefox passwords stay on CSV, because no real Firefox profile was available to verify decryption. Passwords already in KAFFIN are never replaced.
+
+## Settings
+
+`BrowserPreferences` holds app-wide choices, and a setting is added only when it changes real behavior. JavaScript and Lockdown Mode are set per navigation, so they reach open tabs on their next load. Zoom and `WKPreferences` values are pushed to open tabs. There are no settings for third-party cookies or Do Not Track, because WebKit exposes no public control for them.

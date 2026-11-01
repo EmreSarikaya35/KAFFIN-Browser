@@ -5,10 +5,17 @@ import SwiftUI
 
 public enum SettingsPane: Hashable, Sendable {
     case general
+    case appearance
+    case search
     case passwords
-    case performance
+    case privacy
     case sitePermissions
+    case performance
+    case downloads
+    case accessibility
     case importData
+    case reset
+    case about
 }
 
 @MainActor
@@ -26,6 +33,8 @@ public struct SettingsView: View {
     let sitePermissions: SitePermissionsModel
     let passwords: PasswordsModel
     let browserImport: BrowserImportModel
+    let bookmarks: BookmarksModel
+    let onClearData: (ClearDataRequest) async -> Void
     let onSetDefault: () -> Void
 
     public init(
@@ -36,6 +45,8 @@ public struct SettingsView: View {
         sitePermissions: SitePermissionsModel,
         passwords: PasswordsModel,
         browserImport: BrowserImportModel,
+        bookmarks: BookmarksModel,
+        onClearData: @escaping (ClearDataRequest) async -> Void,
         onSetDefault: @escaping () -> Void
     ) {
         self.navigation = navigation
@@ -45,6 +56,8 @@ public struct SettingsView: View {
         self.sitePermissions = sitePermissions
         self.passwords = passwords
         self.browserImport = browserImport
+        self.bookmarks = bookmarks
+        self.onClearData = onClearData
         self.onSetDefault = onSetDefault
     }
 
@@ -52,10 +65,17 @@ public struct SettingsView: View {
 
     private static let panes: [(pane: SettingsPane, key: String, symbol: String)] = [
         (.general, "settings.general", "gearshape"),
+        (.appearance, "settings.appearance", "paintbrush"),
+        (.search, "settings.search", "magnifyingglass"),
         (.passwords, "settings.passwords", "key"),
-        (.performance, "settings.performance", "gauge.with.dots.needle.67percent"),
+        (.privacy, "settings.privacy", "hand.raised"),
         (.sitePermissions, "settings.sitePermissions", "lock.shield"),
+        (.performance, "settings.performance", "gauge.with.dots.needle.67percent"),
+        (.downloads, "settings.downloads", "arrow.down.circle"),
+        (.accessibility, "settings.accessibility", "accessibility"),
         (.importData, "settings.import", "square.and.arrow.down"),
+        (.reset, "settings.reset", "arrow.counterclockwise"),
+        (.about, "settings.about", "info.circle"),
     ]
 
     public var body: some View {
@@ -78,10 +98,16 @@ public struct SettingsView: View {
             .frame(maxHeight: .infinity)
             .background(ChromePalette.toolbar)
             Divider()
-            selectedPane
-                .padding(32)
-                .frame(maxWidth: 760, maxHeight: .infinity, alignment: .topLeading)
-                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 14) {
+                Text(L10n.string(Self.panes.first { $0.pane == navigation.pane }?.key ?? "settings.title"))
+                    .font(.title2.weight(.semibold))
+                    .padding(.horizontal, 20)
+                selectedPane.formStyle(.grouped)
+            }
+            .padding(.vertical, 24)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: 780, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -103,78 +129,23 @@ public struct SettingsView: View {
 
     @ViewBuilder private var selectedPane: some View {
         switch navigation.pane {
-        case .general: GeneralSettingsView(search: search, accent: accent, onSetDefault: onSetDefault)
-        case .passwords: PasswordsSettingsView(model: passwords)
-        case .performance: PerformanceSettingsView(settings: performance)
+        case .general: GeneralSettingsView(onSetDefault: onSetDefault)
+        case .appearance: AppearanceSettingsView(accent: accent, bookmarks: bookmarks)
+        case .search: SearchSettingsView(search: search)
+        case .passwords: PasswordsPaneView(model: passwords)
+        case .privacy: PrivacySettingsView(onClearData: onClearData)
         case .sitePermissions: SitePermissionsSettingsView(model: sitePermissions)
+        case .performance: PerformanceSettingsView(settings: performance)
+        case .downloads: DownloadsSettingsView()
+        case .accessibility: AccessibilitySettingsView()
         case .importData: ImportSettingsView(model: browserImport)
+        case .reset: ResetSettingsView()
+        case .about: AboutSettingsView()
         }
     }
 }
 
-private struct GeneralSettingsView: View {
-    let search: SearchSettings
-    let accent: AccentSettings
-    let onSetDefault: () -> Void
-
-    @State private var template = ""
-    @State private var isTemplateInvalid = false
-
-    var body: some View {
-        Form {
-            Picker(L10n.string("settings.searchEngine"), selection: selection) {
-                ForEach(SearchEngine.builtIn, id: \.name) { Text($0.name).tag($0.name) }
-                Text(L10n.string("settings.customEngine")).tag(SearchSettings.customName)
-            }
-            if search.engine.name == SearchSettings.customName || !template.isEmpty {
-                TextField(L10n.string("settings.customTemplate"), text: $template)
-                    .onSubmit { isTemplateInvalid = !search.setCustom(template: template) }
-                if isTemplateInvalid {
-                    Text(L10n.string("settings.customInvalid")).foregroundStyle(.secondary)
-                }
-            }
-            HStack {
-                ColorPicker(L10n.string("settings.accent"), selection: accentColor, supportsOpacity: false)
-                if accent.color != nil {
-                    Button(L10n.string("settings.accentReset")) { accent.color = nil }
-                }
-            }
-            Button(L10n.string("menu.setDefault"), action: onSetDefault)
-        }
-        .onAppear {
-            if search.engine.name == SearchSettings.customName { template = search.engine.queryTemplate }
-        }
-    }
-
-    private var accentColor: Binding<Color> {
-        Binding {
-            accent.color?.swiftUIColor ?? .accentColor
-        } set: { color in
-            if let rgb = NSColor(color).usingColorSpace(.sRGB) {
-                accent.color = AccentColor(
-                    red: Double(rgb.redComponent),
-                    green: Double(rgb.greenComponent),
-                    blue: Double(rgb.blueComponent)
-                )
-            }
-        }
-    }
-
-    private var selection: Binding<String> {
-        Binding {
-            search.engine.name
-        } set: { name in
-            if let engine = SearchEngine.builtIn.first(where: { $0.name == name }) {
-                search.select(engine)
-                template = ""
-            } else if template.isEmpty {
-                template = "https://"
-            }
-        }
-    }
-}
-
-private struct PerformanceSettingsView: View {
+struct PerformanceSettingsView: View {
     @Bindable var settings: PerformanceSettings
     @State private var excludedText = ""
     @State private var memory: Int64?
@@ -225,7 +196,7 @@ private struct PerformanceSettingsView: View {
     }
 }
 
-private struct SitePermissionsSettingsView: View {
+struct SitePermissionsSettingsView: View {
     let model: SitePermissionsModel
 
     var body: some View {
@@ -263,7 +234,7 @@ private struct SitePermissionsSettingsView: View {
     }
 }
 
-private struct PasswordsSettingsView: View {
+struct PasswordsSettingsView: View {
     let model: PasswordsModel
     @State private var revealed: [SavedLogin: String] = [:]
 
